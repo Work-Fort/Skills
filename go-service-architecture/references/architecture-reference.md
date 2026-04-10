@@ -602,7 +602,232 @@ func NewID(prefix string) string {
 - `net/http/httptest` for handler tests
 - Stub implementations of port interfaces for service logic tests
 - Test files alongside source (`_test.go` suffix)
-- E2E tests in a separate `tests/` directory with its own `go.mod`
+- E2E tests in a separate `tests/e2e/` directory with its own `go.mod`
+
+### End-to-End Tests
+
+E2E tests live in `tests/e2e/` with a separate `go.mod` so they can
+import the project's client SDK without circular dependencies. They
+build the real binary, start it as a subprocess, and make HTTP requests
+against it.
+
+#### Directory Structure
+
+```
+tests/
+  e2e/
+    go.mod              -- separate module, imports main project
+    main_test.go        -- TestMain: build binary, shared setup
+    harness_test.go     -- or harness/ package: daemon lifecycle
+    health_test.go      -- test files by feature
+    entities_test.go
+```
+
+#### TestMain — Build Once, Share Across Tests
+
+```go
+var serviceBin string
+
+func TestMain(m *testing.M) {
+    tmp, err := os.MkdirTemp("", "e2e-*")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer os.RemoveAll(tmp)
+
+    binPath := filepath.Join(tmp, "myservice")
+    cmd := exec.Command("go", "build", "-race", "-o", binPath, ".")
+    cmd.Dir = filepath.Join("..", "..")
+    if out, err := cmd.CombinedOutput(); err != nil {
+        log.Fatalf("build failed: %s\n%s", err, out)
+    }
+    serviceBin = binPath
+
+    os.Exit(m.Run())
+}
+```
+
+The `-race` flag enables the race detector. The harness checks stderr
+for "DATA RACE" on shutdown — a race in any test fails the suite.
+
+#### Free Port Discovery
+
+```go
+func FreePort() (string, error) {
+    ln, err := net.Listen("tcp", "127.0.0.1:0")
+    if err != nil {
+        return "", err
+    }
+    addr := ln.Addr().String()
+    ln.Close()
+    return addr, nil
+}
+```
+
+#### Daemon Harness
+
+The harness starts the binary, waits for it to accept connections, and
+stops it cleanly on test cleanup.
+
+```go
+type Daemon struct {
+    cmd    *exec.Cmd
+    addr   string
+    dir    string
+    stderr *bytes.Buffer
+}
+
+func StartDaemon(bin, addr string, opts ...DaemonOption) (*Daemon, error) {
+    cfg := defaultConfig()
+    for _, opt := range opts {
+        opt(&cfg)
+    }
+
+    dir, _ := os.MkdirTemp("", "e2e-daemon-*")
+
+    d := &Daemon{
+        addr:   addr,
+        dir:    dir,
+        stderr: &bytes.Buffer{},
+    }
+
+    d.cmd = exec.Command(bin, "daemon", "--bind", "127.0.0.1", "--port", port(addr))
+    d.cmd.Stderr = d.stderr
+    d.cmd.Env = append(os.Environ(),
+        "XDG_CONFIG_HOME="+filepath.Join(dir, "config"),
+        "XDG_STATE_HOME="+filepath.Join(dir, "state"),
+    )
+
+    if err := d.cmd.Start(); err != nil {
+        return nil, fmt.Errorf("start daemon: %w", err)
+    }
+
+    // Poll until the daemon accepts TCP connections
+    deadline := time.Now().Add(5 * time.Second)
+    for time.Now().Before(deadline) {
+        conn, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+        if err == nil {
+            conn.Close()
+            return d, nil
+        }
+        time.Sleep(50 * time.Millisecond)
+    }
+    d.Stop()
+    return nil, fmt.Errorf("daemon did not become ready: %s", d.stderr.String())
+}
+```
+
+#### Functional Options for Daemon Config
+
+```go
+type daemonConfig struct {
+    dbPath string
+    // add fields as the service grows
+}
+
+func defaultConfig() daemonConfig {
+    return daemonConfig{dbPath: ""}
+}
+
+type DaemonOption func(*daemonConfig)
+
+func WithDB(path string) DaemonOption {
+    return func(c *daemonConfig) { c.dbPath = path }
+}
+```
+
+#### Stop with Race Detection
+
+```go
+func (d *Daemon) Stop() error {
+    if d.cmd.Process != nil {
+        d.cmd.Process.Signal(syscall.SIGTERM)
+        done := make(chan error, 1)
+        go func() { done <- d.cmd.Wait() }()
+        select {
+        case <-time.After(5 * time.Second):
+            d.cmd.Process.Kill()
+        case <-done:
+        }
+    }
+    os.RemoveAll(d.dir)
+    return nil
+}
+
+func (d *Daemon) StopFatal(t *testing.T) {
+    t.Helper()
+    d.Stop()
+    if strings.Contains(d.stderr.String(), "DATA RACE") {
+        t.Fatalf("data race detected:\n%s", d.stderr.String())
+    }
+}
+```
+
+#### Writing Tests
+
+```go
+func TestHealth(t *testing.T) {
+    addr, _ := FreePort()
+    d, err := StartDaemon(serviceBin, addr)
+    if err != nil {
+        t.Fatal(err)
+    }
+    t.Cleanup(func() { d.StopFatal(t) })
+
+    resp, err := http.Get(fmt.Sprintf("http://%s/v1/health", addr))
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        t.Fatalf("expected 200, got %d", resp.StatusCode)
+    }
+
+    var body map[string]string
+    json.NewDecoder(resp.Body).Decode(&body)
+    if body["status"] != "healthy" {
+        t.Fatalf("expected healthy, got %s", body["status"])
+    }
+}
+
+func TestEntityCRUD(t *testing.T) {
+    addr, _ := FreePort()
+    d, _ := StartDaemon(serviceBin, addr)
+    t.Cleanup(func() { d.StopFatal(t) })
+
+    base := fmt.Sprintf("http://%s/v1", addr)
+
+    // Create
+    body := `{"name":"test"}`
+    resp, _ := http.Post(base+"/entities", "application/json", strings.NewReader(body))
+    if resp.StatusCode != http.StatusCreated {
+        t.Fatalf("create: expected 201, got %d", resp.StatusCode)
+    }
+    var created Entity
+    json.NewDecoder(resp.Body).Decode(&created)
+    resp.Body.Close()
+
+    // Get
+    resp, _ = http.Get(fmt.Sprintf("%s/entities/%s", base, created.ID))
+    if resp.StatusCode != http.StatusOK {
+        t.Fatalf("get: expected 200, got %d", resp.StatusCode)
+    }
+    resp.Body.Close()
+
+    // Delete
+    req, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/entities/%s", base, created.ID), nil)
+    resp, _ = http.DefaultClient.Do(req)
+    if resp.StatusCode != http.StatusNoContent {
+        t.Fatalf("delete: expected 204, got %d", resp.StatusCode)
+    }
+    resp.Body.Close()
+}
+```
+
+Each test gets its own daemon with an isolated in-memory database.
+Tests can run in parallel with `t.Parallel()` since each daemon binds
+to a different port.
 
 ---
 
