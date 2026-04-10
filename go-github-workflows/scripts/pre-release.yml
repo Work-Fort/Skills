@@ -118,14 +118,27 @@ jobs:
           cat *.sha256 > SHA256SUMS
           rm *.sha256
 
+      - name: Create release notes
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          BRANCH: ${{ inputs.branch }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          cat > release-notes.md << EOF
+          > Pre-release build from \`${BRANCH}\` triggered by @${ACTOR}
+
+          **Tag:** \`${TAG}\`
+          **Branch:** \`${BRANCH}\`
+          EOF
+
       - name: Create GitHub Pre-release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           target_commitish: ${{ inputs.branch }}
           name: Pre-release ${{ needs.prepare.outputs.tag }}
+          body_path: release-notes.md
           prerelease: true
-          generate_release_notes: true
           files: |
             release-artifacts/*
         env:
