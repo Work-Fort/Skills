@@ -1,0 +1,102 @@
+name: Release Go SDK
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'go/mypackage/**'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: jdx/mise-action@v3
+      - run: mise run sdk:go:test
+
+  tag:
+    name: Create SDK Tag
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      new_tag: ${{ steps.tag_version.outputs.new_tag }}
+      changelog: ${{ steps.tag_version.outputs.changelog }}
+      should_release: ${{ steps.check_tag.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Bump version and create tag
+        id: tag_version
+        uses: Work-Fort/github-tag-action@v6.3  # fork with paths support
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: false
+          release_branches: master
+          tag_prefix: go/mypackage/v
+          paths: go/mypackage/**
+
+      - name: Check if new tag was created
+        id: check_tag
+        run: |
+          if [ -n "$TAG" ]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          TAG: ${{ steps.tag_version.outputs.new_tag }}
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: tag
+    if: needs.tag.outputs.should_release == 'true'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.tag.outputs.new_tag }}
+
+      - name: Create release notes
+        env:
+          TAG: ${{ needs.tag.outputs.new_tag }}
+          CHANGELOG: ${{ needs.tag.outputs.changelog }}
+          REPO: ${{ github.repository }}
+        run: |
+          VERSION=$(echo "$TAG" | sed 's|^go/mypackage/v||')
+          cat > release-notes.md << EOF
+          # Go SDK v${VERSION}
+
+          Module: \`github.com/${REPO}/go/mypackage\`
+
+          ## What's Changed
+
+          ${CHANGELOG}
+
+          ## Usage
+
+          \`\`\`bash
+          go get github.com/${REPO}/go/mypackage@${TAG}
+          \`\`\`
+
+          ---
+
+          Built automatically by CI
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag.outputs.new_tag }}
+          name: Go SDK ${{ needs.tag.outputs.new_tag }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

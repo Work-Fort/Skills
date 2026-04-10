@@ -1,6 +1,10 @@
 ---
 name: go-service-architecture
-description: Use when scaffolding a new Go microservice, adding domain types, ports, adapters, HTTP handlers, database stores, or MCP integration to an existing Go service, or reviewing Go code for architectural violations
+description: Hexagonal architecture reference for Go microservices with dual database support, REST APIs, and MCP integration. Use when scaffolding a new Go service, adding domain types, ports, adapters, HTTP handlers, database stores, or reviewing Go code for architectural violations. Use when user says "scaffold Go service", "create new microservice", "hexagonal architecture", "add REST endpoint", "set up database layer", or "MCP integration". Covers project layout, library stack, port interfaces, error handling, middleware, and testing patterns.
+license: MIT
+metadata:
+  author: Kaz Walker
+  version: "1.0"
 ---
 
 # Go Service Architecture
@@ -92,7 +96,7 @@ digraph service_decision {
 
 ## Implementation Reference
 
-See @architecture-reference.md for full code examples covering:
+See @references/architecture-reference.md for full code examples covering:
 - Domain types, error sentinels, and port interfaces
 - SQLite and PostgreSQL store implementations
 - HTTP server setup, route registration, and error mapping

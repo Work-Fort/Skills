@@ -1,0 +1,208 @@
+name: Release
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+
+env:
+  BINARY_NAME: myservice
+
+jobs:
+  tag:
+    name: Create Version Tag
+    runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.tag_version.outputs.new_tag }}
+      changelog: ${{ steps.tag_version.outputs.changelog }}
+      should_release: ${{ steps.check_tag.outputs.should_release }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Bump version and create tag
+        id: tag_version
+        uses: Work-Fort/github-tag-action@v6.3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: false
+          release_branches: master
+          tag_prefix: v
+
+      - name: Check if new tag was created
+        id: check_tag
+        run: |
+          if [ -n "$TAG" ]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          TAG: ${{ steps.tag_version.outputs.new_tag }}
+
+  build:
+    name: Build (${{ matrix.os }}-${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    needs: tag
+    if: needs.tag.outputs.should_release == 'true'
+
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+          - os: linux
+            arch: arm64
+          - os: darwin
+            arch: amd64
+          - os: darwin
+            arch: arm64
+          - os: windows
+            arch: amd64
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.tag.outputs.new_tag }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: jdx/mise-action@v3
+
+      - name: Build release binary
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: "0"
+          TAG: ${{ needs.tag.outputs.new_tag }}
+        run: |
+          VERSION=$(echo "$TAG" | sed 's/^v//')
+          EXT=""
+          if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
+          go build -ldflags="-s -w -X main.Version=${VERSION}" \
+            -trimpath \
+            -o "build/${{ env.BINARY_NAME }}-${GOOS}-${GOARCH}${EXT}" .
+
+      - name: Compress and generate checksum
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          cd build
+          ARTIFACT="${{ env.BINARY_NAME }}-${GOOS}-${GOARCH}"
+          if [ "$GOOS" = "windows" ]; then
+            zip "${ARTIFACT}.zip" "${ARTIFACT}.exe"
+            sha256sum "${ARTIFACT}.zip" > "${ARTIFACT}.zip.sha256"
+          else
+            xz -z -9 "${ARTIFACT}"
+            sha256sum "${ARTIFACT}.xz" > "${ARTIFACT}.xz.sha256"
+          fi
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BINARY_NAME }}-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            build/${{ env.BINARY_NAME }}-${{ matrix.os }}-${{ matrix.arch }}.*
+          retention-days: 7
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [tag, build]
+    if: needs.tag.outputs.should_release == 'true'
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          pattern: ${{ env.BINARY_NAME }}-*
+          merge-multiple: true
+
+      - name: Create checksums file
+        run: |
+          cd release-artifacts
+          cat *.sha256 > SHA256SUMS
+          rm *.sha256
+
+      - name: Create release notes
+        env:
+          TAG: ${{ needs.tag.outputs.new_tag }}
+          CHANGELOG: ${{ needs.tag.outputs.changelog }}
+          REPO: ${{ github.repository }}
+          NAME: ${{ env.BINARY_NAME }}
+        run: |
+          VERSION=$(echo "$TAG" | sed 's/^v//')
+
+          cat > release-notes.md << EOF
+          # ${NAME} v${VERSION}
+
+          ## What's Changed
+
+          ${CHANGELOG}
+
+          ## Installation
+
+          ### Linux (x86_64)
+          \`\`\`bash
+          wget https://github.com/${REPO}/releases/download/${TAG}/${NAME}-linux-amd64.xz
+          xz -d ${NAME}-linux-amd64.xz
+          chmod +x ${NAME}-linux-amd64
+          sudo mv ${NAME}-linux-amd64 /usr/local/bin/${NAME}
+          \`\`\`
+
+          ### Linux (ARM64)
+          \`\`\`bash
+          wget https://github.com/${REPO}/releases/download/${TAG}/${NAME}-linux-arm64.xz
+          xz -d ${NAME}-linux-arm64.xz
+          chmod +x ${NAME}-linux-arm64
+          sudo mv ${NAME}-linux-arm64 /usr/local/bin/${NAME}
+          \`\`\`
+
+          ### macOS (Apple Silicon)
+          \`\`\`bash
+          wget https://github.com/${REPO}/releases/download/${TAG}/${NAME}-darwin-arm64.xz
+          xz -d ${NAME}-darwin-arm64.xz
+          chmod +x ${NAME}-darwin-arm64
+          sudo mv ${NAME}-darwin-arm64 /usr/local/bin/${NAME}
+          \`\`\`
+
+          ### macOS (Intel)
+          \`\`\`bash
+          wget https://github.com/${REPO}/releases/download/${TAG}/${NAME}-darwin-amd64.xz
+          xz -d ${NAME}-darwin-amd64.xz
+          chmod +x ${NAME}-darwin-amd64
+          sudo mv ${NAME}-darwin-amd64 /usr/local/bin/${NAME}
+          \`\`\`
+
+          ### Windows (x86_64)
+          Download \`${NAME}-windows-amd64.zip\` from the assets below and extract.
+
+          ## Verification
+
+          \`\`\`bash
+          wget https://github.com/${REPO}/releases/download/${TAG}/SHA256SUMS
+          sha256sum -c SHA256SUMS --ignore-missing
+          \`\`\`
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag.outputs.new_tag }}
+          name: Release ${{ needs.tag.outputs.new_tag }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: false
+          files: |
+            release-artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
