@@ -159,29 +159,110 @@ route.
 
 ## Build Integration
 
-### mise.toml tasks
+### Mise Task Files
 
-```toml
-[tasks."build:web"]
-description = "Build frontend"
-dir = "web"
-run = "npm run build"
+Tasks live in `.mise/tasks/` as executable bash scripts. Subdirectories
+create colon-separated namespaces (see go-service-architecture skill).
 
-[tasks."build:release"]
-description = "Build release binary with embedded frontend"
-depends = ["build:web"]
-run = "go build -tags spa -ldflags='-s -w' -trimpath -o build/myservice ."
+```
+.mise/
+  tasks/
+    build/
+      web             -- mise run build:web
+      go              -- mise run build:go
+    release/
+      dev             -- mise run release:dev
+      production      -- mise run release:production
+    lint/
+      web             -- mise run lint:web
+    clean/
+      web             -- mise run clean:web
+    dev/
+      web             -- mise run dev:web
+```
 
-[tasks."dev:web"]
-description = "Start Vite dev server"
-dir = "web"
-run = "npm run dev"
+**`.mise/tasks/build/web`:**
+
+```bash
+#!/usr/bin/env bash
+#MISE description="Build frontend"
+set -euo pipefail
+
+cd web
+npm run build
+```
+
+**`.mise/tasks/build/go`:**
+
+```bash
+#!/usr/bin/env bash
+#MISE description="Build Go binary (without SPA)"
+set -euo pipefail
+
+go build -o build/myservice .
+```
+
+**`.mise/tasks/release/dev`:**
+
+```bash
+#!/usr/bin/env bash
+#MISE description="Build debug binary with race detector (no SPA)"
+set -euo pipefail
+
+go build -race -o build/myservice .
+```
+
+**`.mise/tasks/release/production`:**
+
+```bash
+#!/usr/bin/env bash
+#MISE description="Build release binary with embedded frontend"
+#MISE depends=["build:web"]
+set -euo pipefail
+
+VERSION="${VERSION:-dev}"
+CGO_ENABLED=0 go build -tags spa \
+    -ldflags="-s -w -X main.Version=${VERSION}" \
+    -trimpath \
+    -o build/myservice .
+```
+
+**`.mise/tasks/dev/web`:**
+
+```bash
+#!/usr/bin/env bash
+#MISE description="Start Vite dev server"
+set -euo pipefail
+
+cd web
+npm run dev
+```
+
+**`.mise/tasks/lint/web`:**
+
+```bash
+#!/usr/bin/env bash
+#MISE description="Lint frontend"
+set -euo pipefail
+
+cd web
+npm run lint
+```
+
+**`.mise/tasks/clean/web`:**
+
+```bash
+#!/usr/bin/env bash
+#MISE description="Remove frontend build artifacts"
+set -euo pipefail
+
+rm -rf web/dist
 ```
 
 ### Production build
 
 ```bash
-mise run build:release
+mise run release:production
 ```
 
 ### Development

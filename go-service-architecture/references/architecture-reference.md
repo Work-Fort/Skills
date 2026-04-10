@@ -833,26 +833,133 @@ to a different port.
 
 ## Build Tooling
 
+### mise.toml
+
+The `mise.toml` at the repo root pins tool versions only. Tasks live
+in separate files under `.mise/tasks/`.
+
 ```toml
 [tools]
 go = "1.26.0"
-
-[tasks.build]
-description = "Build the binary"
-run = "go build -o build/myservice ."
-
-[tasks.test]
-description = "Run unit tests"
-run = "go test ./..."
-
-[tasks.lint]
-description = "Run linter"
-run = "golangci-lint run ./..."
-
-[tasks.clean]
-description = "Remove build artifacts"
-run = "rm -rf build/"
 ```
+
+### Task Files
+
+Each task is an executable bash script in `.mise/tasks/`. Subdirectories
+create colon-separated namespaces: `.mise/tasks/build/go` runs as
+`mise run build:go`.
+
+```
+.mise/
+  tasks/
+    build/
+      go              -- mise run build:go
+    test/
+      unit            -- mise run test:unit
+      e2e             -- mise run test:e2e
+    release/
+      dev             -- mise run release:dev
+      production      -- mise run release:production
+    lint/
+      go              -- mise run lint:go
+    clean/
+      go              -- mise run clean:go
+    ci                -- mise run ci
+```
+
+**`.mise/tasks/build/go`:**
+
+```bash
+#!/usr/bin/env bash
+#MISE description="Build the binary (debug)"
+set -euo pipefail
+
+go build -o build/myservice .
+```
+
+**`.mise/tasks/test/unit`:**
+
+```bash
+#!/usr/bin/env bash
+#MISE description="Run unit tests"
+set -euo pipefail
+
+go test ./...
+```
+
+**`.mise/tasks/test/e2e`:**
+
+```bash
+#!/usr/bin/env bash
+#MISE description="Run end-to-end tests"
+#MISE depends=["build:go"]
+set -euo pipefail
+
+cd tests/e2e
+go test -v -count=1 ./...
+```
+
+**`.mise/tasks/release/dev`:**
+
+```bash
+#!/usr/bin/env bash
+#MISE description="Build debug binary with race detector"
+set -euo pipefail
+
+go build -race -o build/myservice .
+```
+
+**`.mise/tasks/release/production`:**
+
+```bash
+#!/usr/bin/env bash
+#MISE description="Build release binary"
+set -euo pipefail
+
+VERSION="${VERSION:-dev}"
+CGO_ENABLED=0 go build \
+    -ldflags="-s -w -X main.Version=${VERSION}" \
+    -trimpath \
+    -o build/myservice .
+```
+
+**`.mise/tasks/lint/go`:**
+
+```bash
+#!/usr/bin/env bash
+#MISE description="Run Go linter"
+set -euo pipefail
+
+golangci-lint run ./...
+```
+
+**`.mise/tasks/clean/go`:**
+
+```bash
+#!/usr/bin/env bash
+#MISE description="Remove Go build artifacts"
+set -euo pipefail
+
+rm -rf build/
+```
+
+**`.mise/tasks/ci`:**
+
+```bash
+#!/usr/bin/env bash
+#MISE description="Run full CI checks"
+#MISE depends=["lint:go", "test:unit", "build:go"]
+set -euo pipefail
+
+echo "CI passed"
+```
+
+Task files must be executable: `chmod +x .mise/tasks/*`
+
+Key metadata directives:
+- `#MISE description="..."` — shown in `mise tasks` output
+- `#MISE depends=["lint:go", "test:unit"]` — run dependencies first (use colon namespaces)
+- `#MISE sources=["pattern"]` — file patterns for cache invalidation
 
 ---
 

@@ -11,7 +11,7 @@ metadata:
 
 GitHub Actions workflows for Go services using Mise for toolchain management.
 
-All workflows assume `mise.toml` pins the Go version and defines `build`, `test`, and `lint` tasks (see go-service-architecture skill).
+All workflows assume `mise.toml` pins the Go version and `.mise/tasks/` contains namespaced tasks (`build:go`, `test:unit`, `lint:go`, etc.). See go-service-architecture skill for the full task layout.
 
 ## Conventions
 
