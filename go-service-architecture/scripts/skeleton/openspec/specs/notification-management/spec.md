@@ -35,7 +35,7 @@ Provides the reset endpoint for re-sending notifications, the paginated list end
 
 - REQ-016: REST endpoints (except health) SHALL be registered using the `huma` framework via `humago.New` and `huma.Register`.
 - REQ-017: The health endpoint SHALL be registered directly on the `http.ServeMux` via `mux.HandleFunc("GET /v1/health", ...)` (not via huma).
-- REQ-018: Request body size SHALL be limited to 1 MB via `http.MaxBytesReader`.
+- REQ-018: The `POST /v1/notify/reset` endpoint SHALL limit the request body size to 1 MB via `r.Body = http.MaxBytesReader(w, r.Body, 1<<20)` applied before reading the body. Requests exceeding this limit SHALL result in a `400 Bad Request` response.
 
 ## Scenarios
 
@@ -82,3 +82,10 @@ Provides the reset endpoint for re-sending notifications, the paginated list end
 - **When** a GET request is sent to `/v1/health`
 - **Then** the system SHALL return HTTP 503
 - **And** the response body SHALL be `{"status": "unhealthy"}`
+
+### Scenario: Oversized reset request body rejected
+
+- **Given** a POST request body larger than 1 MB is prepared
+- **When** the request is sent to `POST /v1/notify/reset`
+- **Then** the system SHALL return HTTP 400 Bad Request
+- **And** no notification state change SHALL occur

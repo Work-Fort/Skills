@@ -13,6 +13,7 @@ Accepts notification requests via a REST endpoint, validates input, enforces one
 - REQ-003: The notification ID SHALL be a prefixed UUID in the format `ntf_<uuid>`, generated at the infra layer using `google/uuid`.
 - REQ-004: The endpoint SHALL create a notification record in the database with state `pending`.
 - REQ-005: The endpoint SHALL enqueue an email delivery job via the goqite background queue. Email sending SHALL NOT happen synchronously in the HTTP handler.
+- REQ-030: The endpoint SHALL limit the request body size to 1 MB via `r.Body = http.MaxBytesReader(w, r.Body, 1<<20)` applied before reading the body. Requests exceeding this limit SHALL result in a `400 Bad Request` response.
 
 ### Input Validation
 
@@ -36,8 +37,8 @@ Accepts notification requests via a REST endpoint, validates input, enforces one
 
 - REQ-014: The SMTP adapter SHALL use `wneessen/go-mail` for email delivery.
 - REQ-015: The SMTP adapter SHALL implement the `domain.EmailSender` port interface.
-- REQ-016: Email sending SHALL include a 6-second artificial delay to simulate real delivery latency and make state transitions visible in the dashboard.
-- REQ-017: Emails to addresses ending in `@example.com` SHALL automatically fail, simulating an undeliverable address without needing a real mail server.
+- REQ-016: Email sending SHALL include a 6-second artificial delay to simulate real delivery latency and make state transitions visible in the dashboard. This delay SHALL apply to both the `SMTPSender` (dev/production) and the `ConsoleSender` (QA).
+- REQ-017: Emails to addresses ending in `@example.com` SHALL automatically fail with a permanent error (`ErrExampleDomain`), simulating an undeliverable address. This behavior SHALL only be compiled into QA builds (gated by `//go:build qa`). The `SMTPSender` used in dev and production builds (`//go:build !qa`) SHALL NOT contain `@example.com` rejection logic. See service-build REQ-029 for the full simulated failure domain map.
 - REQ-018: Failed sends due to transient errors SHALL be automatically retried by goqite's visibility timeout mechanism.
 
 ### Email Templates
@@ -61,6 +62,7 @@ Accepts notification requests via a REST endpoint, validates input, enforces one
 
 - REQ-027: The `domain.EmailSender` interface SHALL define a `Send(ctx context.Context, msg *EmailMessage) error` method.
 - REQ-028: The `EmailMessage` struct SHALL contain fields: `To []string`, `Subject string`, `HTML string`, `Text string`.
+- REQ-029: The `domain.EmailSender` interface SHALL have two compile-time implementations selected by build tags: `SMTPSender` (`//go:build !qa`) for dev and production builds, and `ConsoleSender` (`//go:build qa`) for QA builds. Both SHALL be in the `internal/infra/email` package. See service-build REQ-026 through REQ-032 for `ConsoleSender` requirements.
 
 ## Scenarios
 
@@ -86,12 +88,21 @@ Accepts notification requests via a REST endpoint, validates input, enforces one
 - **When** a POST request is sent to `/v1/notify` with `{"email": "not-an-email"}`
 - **Then** the system SHALL return HTTP 422
 
-### Scenario: Email to example.com auto-fails
+### Scenario: Email to example.com auto-fails in QA build
 
-- **Given** a POST request is sent to `/v1/notify` with `{"email": "test@example.com"}`
+- **Given** the binary is built with `-tags spa,qa`
+- **And** a POST request is sent to `/v1/notify` with `{"email": "test@example.com"}`
 - **When** the background worker picks up the email job
-- **Then** the email delivery SHALL fail permanently
+- **Then** the `ConsoleSender` SHALL return a permanent failure error wrapping `ErrExampleDomain`
 - **And** the notification state SHALL transition to `failed`
+
+### Scenario: Email to example.com is sent normally in production build
+
+- **Given** the binary is built with `-tags spa` (production) or no tags (dev)
+- **And** a POST request is sent to `/v1/notify` with `{"email": "test@example.com"}`
+- **When** the background worker picks up the email job
+- **Then** the `SMTPSender` SHALL attempt delivery via SMTP without any `@example.com` rejection logic
+- **And** the delivery result SHALL depend on the actual SMTP server response
 
 ### Scenario: Email includes plaintext alternative
 
@@ -99,6 +110,13 @@ Accepts notification requests via a REST endpoint, validates input, enforces one
 - **When** the email is composed
 - **Then** the email SHALL contain an HTML body rendered from a Maizzle-compiled template with pre-inlined CSS, with dynamic values injected via `html/template`
 - **And** the email SHALL contain a plaintext alternative body
+
+### Scenario: Oversized request body rejected
+
+- **Given** a POST request body larger than 1 MB is prepared
+- **When** the request is sent to `POST /v1/notify`
+- **Then** the system SHALL return HTTP 400 Bad Request
+- **And** no notification record SHALL be created
 
 ### Scenario: Request ID propagated to email
 

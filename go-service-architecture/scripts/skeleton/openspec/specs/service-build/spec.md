@@ -21,6 +21,19 @@ Defines the three build variants (dev, qa, production), mise task automation, Do
 - REQ-008: The QA seed data SHALL populate notifications in the following states: delivered, failed, and not_sent with retries remaining.
 - REQ-009: The `not_sent` seed records SHALL trigger automatic retries when the service starts, creating visible dashboard activity immediately.
 
+### QA Email Sender
+
+- REQ-026: QA builds SHALL use a `ConsoleSender` that implements `domain.EmailSender` instead of the SMTP-backed `SMTPSender`. The `ConsoleSender` SHALL be selected at compile time via `//go:build qa` and `//go:build !qa` file pairs, following the same pattern as the seed data infrastructure (`seed_qa.go` / `seed_default.go`).
+- REQ-027: The `ConsoleSender` SHALL log each email to `slog` (level Info) including the recipient list, subject line, and body content, then return `nil` (success). It SHALL NOT make any network calls.
+- REQ-028: The `ConsoleSender` SHALL enforce the same 6-second artificial delay as the SMTP sender (notification-delivery REQ-016) so that state machine transitions remain visible in the dashboard.
+- REQ-029: The `ConsoleSender` SHALL consult a built-in simulated failure domain map before logging. The map SHALL define the following domain behaviors:
+  - `@example.com` -- return a permanent failure error (wrapping `ErrExampleDomain`).
+  - `@fail.com` -- return a timeout error (wrapping a `context.DeadlineExceeded`-style error).
+  - `@slow.com` -- apply a 30-second delay before returning success.
+- REQ-030: The simulated failure domain map SHALL only exist in the `//go:build qa` compilation unit. In non-QA builds (`//go:build !qa`), the map SHALL be absent and no simulated failure logic SHALL be compiled into the binary.
+- REQ-031: When the `ConsoleSender` matches a recipient against the simulated failure domain map, it SHALL log the simulated action (e.g., `"simulated permanent failure for @example.com"`) via `slog` before returning the error or applying the delay.
+- REQ-032: QA builds SHALL require no external dependencies for email delivery -- no Mailpit, no SMTP server. The QA binary SHALL be fully standalone.
+
 ### Mise Tasks
 
 - REQ-010: Build tasks SHALL be implemented as executable bash scripts in `.mise/tasks/`, with subdirectories creating colon-separated namespaces.
@@ -28,6 +41,7 @@ Defines the three build variants (dev, qa, production), mise task automation, Do
 - REQ-012: The `mise run build:web` task SHALL build the frontend by running `npm run build` in the `web/` directory.
 - REQ-013: The `mise run release:dev` task SHALL build a debug binary with the `-race` flag enabled.
 - REQ-014: The `mise run release:production` task SHALL depend on `build:web`, compile with `-tags spa`, set `CGO_ENABLED=0`, apply `-ldflags="-s -w -X main.Version=${VERSION}"`, and use `-trimpath`.
+- REQ-025: The `mise run release:qa` task SHALL depend on `build:web`, compile with `-tags spa,qa`, and output the binary to `build/notifier`. It SHALL include the embedded SPA and QA seed data.
 - REQ-015: The `mise run test:unit` task SHALL run `go test ./...`.
 - REQ-016: The `mise run test:e2e` task SHALL depend on `build:go` and run `go test -v -count=1 ./...` in the `tests/e2e/` directory.
 - REQ-017: The `mise run dev:web` task SHALL start the Vite dev server by running `npm run dev` in the `web/` directory.
@@ -71,3 +85,57 @@ Defines the three build variants (dev, qa, production), mise task automation, Do
 - **Then** the output binary SHALL embed the SPA assets
 - **And** the binary version SHALL report `1.0.0`
 - **And** `CGO_ENABLED` SHALL be `0`
+
+### Scenario: Release QA task builds binary with seed data
+
+- **Given** the frontend has been built in `web/dist/`
+- **When** `mise run release:qa` is executed
+- **Then** the output binary SHALL be written to `build/notifier`
+- **And** the binary SHALL embed the SPA assets
+- **And** the binary SHALL include QA seed data
+- **And** the service SHALL populate seed notifications on first startup with a fresh database
+
+### Scenario: QA build uses ConsoleSender instead of SMTPSender
+
+- **Given** the binary is built with `-tags spa,qa`
+- **When** the service starts and processes an email delivery job for `user@company.com`
+- **Then** the `ConsoleSender` SHALL log the recipient, subject, and body via `slog`
+- **And** the email SHALL NOT be sent over SMTP
+- **And** the notification state SHALL transition to `delivered`
+
+### Scenario: QA build simulates permanent failure for @example.com
+
+- **Given** the binary is built with `-tags spa,qa`
+- **When** the background worker processes an email delivery job for `test@example.com`
+- **Then** the `ConsoleSender` SHALL log a simulated permanent failure message
+- **And** the `ConsoleSender` SHALL return an error wrapping `ErrExampleDomain`
+- **And** the notification state SHALL transition to `failed`
+
+### Scenario: QA build simulates timeout for @fail.com
+
+- **Given** the binary is built with `-tags spa,qa`
+- **When** the background worker processes an email delivery job for `test@fail.com`
+- **Then** the `ConsoleSender` SHALL log a simulated timeout message
+- **And** the `ConsoleSender` SHALL return a timeout error
+- **And** the notification state SHALL transition to `not_sent` (eligible for retry)
+
+### Scenario: QA build simulates slow delivery for @slow.com
+
+- **Given** the binary is built with `-tags spa,qa`
+- **When** the background worker processes an email delivery job for `test@slow.com`
+- **Then** the `ConsoleSender` SHALL apply a 30-second delay before returning success
+- **And** the notification state SHALL eventually transition to `delivered`
+
+### Scenario: QA build requires no external email dependencies
+
+- **Given** the binary is built with `-tags spa,qa`
+- **When** the service starts with no SMTP configuration and no Mailpit running
+- **Then** the service SHALL start successfully
+- **And** email delivery jobs SHALL be processed by the `ConsoleSender` without error
+
+### Scenario: Production build excludes simulated failure domains
+
+- **Given** the binary is built with `-tags spa` (production)
+- **When** the service sends an email to `test@fail.com`
+- **Then** the email SHALL be delivered via the real SMTP sender
+- **And** no simulated failure logic SHALL execute

@@ -74,11 +74,13 @@ Provides a React SPA dashboard embedded in the Go binary for monitoring notifica
 
 ### Button Variants
 
+> **Badge vs. Button token usage:** Badges (non-interactive status indicators) use the lighter `bg` token as background with the darker `text` token as foreground (`bg-semantic-{name}-bg text-semantic-{name}-text`). Buttons (interactive controls) use the darker `text` token as background with white text (`bg-semantic-{name}-text text-white`) to provide higher contrast and a stronger visual affordance for clickable elements.
+
 - REQ-032: The `Button` component SHALL support the following `variant` values: `primary`, `secondary`, `success`, `warning`, `info`, `danger`. The TypeScript type for `variant` SHALL be a union of these string literals.
-- REQ-033: The `success` variant SHALL use semantic success token colors (`bg-semantic-success-bg text-semantic-success-text` in light mode, auto-switching via CSS custom properties in dark mode). Hover state SHALL darken the background by 10% using Tailwind opacity modifier or a dedicated hover token.
-- REQ-034: The `warning` variant SHALL use semantic warning token colors with the same pattern as `success`.
-- REQ-035: The `info` variant SHALL use semantic info token colors with the same pattern as `success`.
-- REQ-036: The `danger` variant SHALL use semantic danger token colors with the same pattern as `success`.
+- REQ-033: The `success` variant SHALL use the semantic success `text` token as background with white text (`bg-semantic-success-text text-white`), auto-switching via CSS custom properties in dark mode. Hover state SHALL darken the background by 10% using Tailwind opacity modifier or a dedicated hover token.
+- REQ-034: The `warning` variant SHALL use the semantic warning `text` token as background with white text (`bg-semantic-warning-text text-white`), following the same button pattern as `success`.
+- REQ-035: The `info` variant SHALL use the semantic info `text` token as background with white text (`bg-semantic-info-text text-white`), following the same button pattern as `success`.
+- REQ-036: The `danger` variant SHALL use the semantic danger `text` token as background with white text (`bg-semantic-danger-text text-white`), following the same button pattern as `success`.
 - REQ-037: The `Button.stories.tsx` file SHALL include stories for each new variant (`Success`, `Warning`, `Info`, `Danger`) in addition to the existing `Primary`, `Secondary`, and `Disabled` stories. The `argTypes.variant` control SHALL list all six variants.
 
 ### Contrast and Accessibility
@@ -180,8 +182,8 @@ Provides a React SPA dashboard embedded in the Go binary for monitoring notifica
 
 - **Given** a `Button` with `variant="danger"`
 - **When** the component renders in light mode
-- **Then** the button background SHALL use `--color-semantic-danger-bg` (`#fee2e2`)
-- **And** the button text SHALL use `--color-semantic-danger-text` (`#991b1b`)
+- **Then** the button background SHALL use `--color-semantic-danger-text` (`#991b1b`)
+- **And** the button text SHALL be white (`#ffffff`)
 
 ### Scenario: Button stories include all variants
 
