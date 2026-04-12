@@ -1,0 +1,24 @@
+# Build output
+build/
+
+# Go
+*.exe
+*.test
+*.out
+
+# Node
+web/node_modules/
+web/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Email build output
+email/dist/
