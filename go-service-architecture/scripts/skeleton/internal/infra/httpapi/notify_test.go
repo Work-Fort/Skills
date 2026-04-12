@@ -14,7 +14,6 @@ import (
 // stubNotificationStore is a minimal in-memory store for handler tests.
 type stubNotificationStore struct {
 	notifications map[string]*domain.Notification
-	enqueued      []string // emails enqueued for delivery
 }
 
 func newStubStore() *stubNotificationStore {
@@ -107,7 +106,9 @@ func TestHandleNotifyDuplicate(t *testing.T) {
 	}
 
 	var resp map[string]string
-	json.NewDecoder(rec.Body).Decode(&resp)
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
 	if !strings.Contains(resp["error"], "already notified") {
 		t.Errorf("error = %q, want 'already notified'", resp["error"])
 	}
