@@ -104,6 +104,7 @@ Every spec follows this structure:
 - **Dev/test tooling dependencies.** If the project requires a specific tool for testing (e.g., a mock SMTP server), specify it by name, how it is installed, and how it integrates with the test suite.
 - **Name the header.** If a value is propagated in an HTTP header or email header, specify the exact header name (`X-Request-ID`, `Authorization`, etc.), not just "propagate the value in a header."
 - **Cross-spec consistency.** When multiple specs reference the same concept (e.g., state transitions), they must agree. If spec A says a transition is `pending → failed` and spec B says it is `sending → failed`, one of them is wrong. Before finalizing, check that all specs referencing the same state machine use the same transition list.
+- **Shared resource constraints.** When multiple components depend on the same resource (database connection, queue, event bus, config instance), specify whether they share an instance or create their own. A shared `*sql.DB` between a store and a background queue is an architecture requirement — omitting it produces runtime bugs (e.g., SQLite `SQLITE_BUSY` under concurrency).
 
 ### Scenario Rules
 
@@ -157,6 +158,42 @@ Determine what belongs in this spec and what belongs in adjacent specs. A capabi
 - Target 8-20 requirements per spec. Fewer is fine for simple capabilities. More than 20 is a signal to split.
 
 ### 4. Save to `openspec/specs/<capability>/spec.md`
+
+### 5. Write the ambiguity report
+
+After writing all specs, produce an ambiguity report at
+`openspec/ambiguities.md`. This document surfaces every place where
+the source material was unclear, contradictory, or required a judgment
+call.
+
+**Format:**
+
+```markdown
+# Ambiguity Report
+
+## <Topic>
+
+**Source says:** <quote or paraphrase from the source material>
+**Ambiguity:** <what is unclear or could be interpreted multiple ways>
+**Decision made:** <what the spec assumes>
+**Alternative interpretation:** <the other reasonable reading>
+**Impact if wrong:** <what breaks if the wrong interpretation was chosen>
+```
+
+**What counts as an ambiguity:**
+- A term used without definition (e.g., "terminal state" without listing which states are terminal)
+- Two parts of the source material that imply different behavior
+- A behavior described at a high level but not detailed enough to implement (e.g., "automatically fail" — does it skip a state or pass through it?)
+- A resource that multiple components use but the source doesn't say whether they share an instance
+- A configuration value that has no stated default
+- A feature mentioned in one section but absent from another (e.g., listed in the stack table but not in the workflow description)
+
+**Do not silently resolve ambiguities.** If you had to make a judgment
+call while writing a requirement, it belongs in this report. The
+human decides — not the spec writer.
+
+This report is a first-class deliverable, not optional. Specs without
+an ambiguity report are incomplete.
 
 ## Updating an Existing Spec
 
