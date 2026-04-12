@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Run full CI checks"
-#MISE depends=["lint:go", "lint:web", "test:unit", "build:go"]
+#MISE depends=["lint:go", "lint:web", "test:unit", "test:a11y", "build:go"]
 set -euo pipefail
 
 echo "CI passed"

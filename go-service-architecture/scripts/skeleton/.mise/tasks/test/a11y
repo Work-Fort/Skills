@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+#MISE description="Run Storybook accessibility tests (WCAG 2.1 AA)"
+set -euo pipefail
+
+cd web
+
+# Build Storybook for static serving (faster and more reliable than dev mode in CI)
+npx storybook build --quiet 2>/dev/null
+
+# Serve static Storybook, run tests, then clean up
+npx concurrently --kill-others --success first \
+  "npx http-server storybook-static --port 6006 --silent" \
+  "npx wait-on http://127.0.0.1:6006 && npx test-storybook --url http://127.0.0.1:6006"
