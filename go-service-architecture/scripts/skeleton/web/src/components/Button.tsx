@@ -1,7 +1,15 @@
 import { type ButtonHTMLAttributes } from 'react'
 
+export type ButtonVariant =
+  | 'primary'
+  | 'secondary'
+  | 'success'
+  | 'warning'
+  | 'info'
+  | 'danger'
+
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary'
+  variant?: ButtonVariant
 }
 
 export function Button({
@@ -13,11 +21,19 @@ export function Button({
   const base =
     'inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none'
 
-  const variants: Record<string, string> = {
+  const variants: Record<ButtonVariant, string> = {
     primary:
       'bg-brand-accent text-white hover:bg-brand-accent/90 focus:ring-brand-accent',
     secondary:
       'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:ring-brand-accent dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700',
+    success:
+      'bg-semantic-success-text text-white hover:opacity-90 focus:ring-semantic-success-text',
+    warning:
+      'bg-semantic-warning-text text-white hover:opacity-90 focus:ring-semantic-warning-text',
+    info:
+      'bg-semantic-info-text text-white hover:opacity-90 focus:ring-semantic-info-text',
+    danger:
+      'bg-semantic-danger-text text-white hover:opacity-90 focus:ring-semantic-danger-text',
   }
 
   return (
