@@ -8,3 +8,8 @@ npx maizzle build production
 
 # Copy plaintext templates to dist (Maizzle only processes HTML).
 cp emails/*.txt dist/
+
+# Copy compiled templates to Go embed location.
+cd ..
+mkdir -p internal/infra/email/dist
+cp email/dist/* internal/infra/email/dist/
