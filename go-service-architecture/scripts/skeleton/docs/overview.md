@@ -94,6 +94,7 @@ in a real system.
 | React dashboard | Embedded SPA | Admin panels — monitoring dashboards, back-office tools, internal consoles |
 | WebSocket live updates | Real-time push to browser | Live dashboards — order tracking, deployment status, chat, monitoring alerts |
 | Tailwind + dark mode | CSS framework with theme switching | Design systems — consistent UI across light/dark themes, accessibility, user preference |
+| Storybook | Component development + visual testing | Component libraries — isolated component development, visual regression testing, design system documentation |
 | Shared brand styling | Same palette in frontend and email | Brand consistency — matching colors and typography across web, email, and print |
 | SPA embed + build tags | go:embed with conditional compilation | Single-binary deployment — CLI tools with web UIs, edge services, appliance software |
 | Dev proxy | Reverse proxy to Vite | Development experience — hot reload, fast iteration without rebuilding Go binary |
@@ -190,7 +191,7 @@ Dockerfile
 
 ## Implementation Plan Sequence
 
-The app is built in seven sequential plans, each delivering working,
+The app is built in eight sequential plans, each delivering working,
 testable functionality:
 
 | Step | Plan | Est. tasks | Delivers |
@@ -201,7 +202,8 @@ testable functionality:
 | 4 | State machine | ~12 | Stateless integration, state transitions, retry count/limit, not_sent soft-fail, audit log, @example.com auto-fail, QA seed for all states |
 | 5 | Reset, list, and PostgreSQL | ~10 | Reset endpoint, paginated notifications list, PostgreSQL store + migrations |
 | 6 | MCP and WebSocket | ~10 | MCP tools (1:1 with REST), MCP bridge, WebSocket endpoint for live updates |
-| 7 | Frontend | ~14 | React SPA, Tailwind + dark mode, Vite setup, embed, dev proxy, dashboard with WebSocket, resend button |
+| 7 | Frontend foundation | ~12 | React + TypeScript + Vite scaffold, Tailwind + dark mode, Storybook setup, reusable components (button, pagination, dark mode switcher), component stories, embed files + dev proxy |
+| 8 | Dashboard | ~12 | Notifications table, WebSocket integration, resend button, API client, dashboard Storybook story, SPA routing |
 
 The QA build tag (`//go:build qa`) and seed infrastructure are
 established in Step 1. Each subsequent step adds seed data for the
