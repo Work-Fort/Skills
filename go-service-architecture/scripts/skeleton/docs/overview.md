@@ -195,10 +195,14 @@ testable functionality:
 
 | Step | Plan | Delivers |
 |------|------|----------|
-| 1 | Foundation | Project layout, domain types, error sentinels, CLI, config, SQLite store, health endpoint, structured logging, request ID middleware, mise tasks, Dockerfile |
-| 2 | Notification delivery | Notify endpoint, input validation, email templates with brand styling, goqite queue, SMTP adapter, 6-second delay, Mailpit E2E tests |
-| 3 | State machine | Stateless integration, state transitions, retry count/limit, not_sent soft-fail, audit log, @example.com auto-fail |
+| 1 | Foundation | Project layout, domain types, error sentinels, CLI, config, SQLite store, health endpoint, structured logging, request ID middleware, QA build tag + seed infrastructure, mise tasks, Dockerfile |
+| 2 | Notification delivery | Notify endpoint, input validation, email templates with brand styling, goqite queue, SMTP adapter, 6-second delay, QA seed for pending/sending states, Mailpit E2E tests |
+| 3 | State machine | Stateless integration, state transitions, retry count/limit, not_sent soft-fail, audit log, @example.com auto-fail, QA seed for delivered/failed/not_sent states |
 | 4 | Reset and list | Reset endpoint, paginated notifications list, PostgreSQL store |
 | 5 | MCP and WebSocket | MCP tools (1:1 with REST), MCP bridge, WebSocket endpoint for live updates |
 | 6 | Frontend | React SPA, Tailwind + dark mode, Vite setup, embed, dev proxy, dashboard with WebSocket, resend button |
-| 7 | QA build and E2E | QA build tag, seed data, E2E test suite with QA build + Mailpit |
+
+The QA build tag (`//go:build qa`) and seed infrastructure are
+established in Step 1. Each subsequent step adds seed data for the
+states it introduces, so the QA build always reflects the full
+feature set completed so far.
