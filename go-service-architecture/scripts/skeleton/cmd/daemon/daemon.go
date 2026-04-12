@@ -120,6 +120,8 @@ func RunServer(ctx context.Context, cfg ServerConfig) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/health", httpapi.HandleHealth(store))
 	mux.HandleFunc("POST /v1/notify", httpapi.HandleNotify(store, nq))
+	mux.HandleFunc("POST /v1/notify/reset", httpapi.HandleReset(store))
+	mux.HandleFunc("GET /v1/notifications", httpapi.HandleList(store))
 
 	// Apply middleware stack.
 	handler := httpapi.WithMiddleware(mux)
