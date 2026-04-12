@@ -41,6 +41,14 @@ for the initial implementation but worth revisiting.
 - Final palette: pending=yellow, sending=purple, delivered=green,
   failed=red, not_sent=orange
 
+## Button Variants
+
+- Add color variants that match the status badge palette for
+  visual consistency: success (green), warning (orange), info
+  (purple/blue), danger (red), in addition to existing primary/secondary
+- The status badge colors and button colors should come from the same
+  semantic token set so they're always in sync
+
 ## Resend Button UX
 
 - Consider whether the resend button should appear on notifications
