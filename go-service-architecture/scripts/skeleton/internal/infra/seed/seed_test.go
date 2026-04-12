@@ -23,9 +23,49 @@ func TestRunSeedExecutes(t *testing.T) {
 	}
 	defer db.Close()
 
-	// The placeholder seed SQL is just a comment, so it should
-	// succeed on any database without requiring schema.
+	// Create the tables that seed data depends on.
+	schema := `
+	CREATE TABLE IF NOT EXISTS notifications (
+		id          TEXT PRIMARY KEY,
+		email       TEXT NOT NULL UNIQUE,
+		status      INTEGER NOT NULL DEFAULT 0,
+		retry_count INTEGER NOT NULL DEFAULT 0,
+		retry_limit INTEGER NOT NULL DEFAULT 3,
+		created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+		updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+	);
+	create table goqite (
+		id text primary key default ('m_' || lower(hex(randomblob(16)))),
+		created text not null default (strftime('%Y-%m-%dT%H:%M:%fZ')),
+		updated text not null default (strftime('%Y-%m-%dT%H:%M:%fZ')),
+		queue text not null,
+		body blob not null,
+		timeout text not null default (strftime('%Y-%m-%dT%H:%M:%fZ')),
+		received integer not null default 0,
+		priority integer not null default 0
+	) strict;`
+	if _, err := db.Exec(schema); err != nil {
+		t.Fatalf("create schema: %v", err)
+	}
+
 	if err := RunSeed(db); err != nil {
 		t.Fatalf("RunSeed() error: %v", err)
+	}
+
+	// Verify seed data was inserted.
+	var count int
+	if err := db.QueryRow("SELECT count(*) FROM notifications").Scan(&count); err != nil {
+		t.Fatalf("count notifications: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("notification count = %d, want 3", count)
+	}
+
+	// Verify queue jobs were enqueued.
+	if err := db.QueryRow("SELECT count(*) FROM goqite").Scan(&count); err != nil {
+		t.Fatalf("count goqite: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("goqite message count = %d, want 3", count)
 	}
 }
