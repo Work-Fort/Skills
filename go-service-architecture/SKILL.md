@@ -37,26 +37,26 @@ No `pkg/` directory — use `internal/` or flat layout.
 
 ## Library Stack
 
-| Concern | Library |
-|---------|---------|
-| CLI | `spf13/cobra` |
-| Config | `knadh/koanf` |
-| Logging | `log/slog` (stdlib) |
-| HTTP mux | `net/http` (stdlib) |
-| REST | `danielgtaylor/huma/v2` |
-| SQLite | `modernc.org/sqlite` (CGO-free) |
-| PostgreSQL | `jackc/pgx/v5` |
-| Migrations | `pressly/goose/v3` |
-| Background queue | `maragu.dev/goqite` |
-| State machine | `qmuntal/stateless` |
-| Email (SMTP) | `wneessen/go-mail` |
-| Email (parsing) | `jhillyerd/enmime` |
-| Email (CSS inlining) | `vanng822/go-premailer` |
-| MCP | `mark3labs/mcp-go` |
-| UUID | `google/uuid` |
-| CEL expressions | `google/cel-go` |
-| Linter | `golangci-lint` |
-| Build tooling | `mise` |
+| Concern | Library | License |
+|---------|---------|---------|
+| CLI | `spf13/cobra` | Apache-2.0 |
+| Config | `knadh/koanf` | MIT |
+| Logging | `log/slog` (stdlib) | — |
+| HTTP mux | `net/http` (stdlib) | — |
+| REST | `danielgtaylor/huma/v2` | MIT |
+| SQLite | `modernc.org/sqlite` (CGO-free) | BSD-3-Clause |
+| PostgreSQL | `jackc/pgx/v5` | MIT |
+| Migrations | `pressly/goose/v3` | MIT |
+| Background queue | `maragu.dev/goqite` | MIT |
+| State machine | `qmuntal/stateless` | BSD-2-Clause |
+| Email (SMTP) | `wneessen/go-mail` | MIT |
+| Email (parsing) | `jhillyerd/enmime` | MIT |
+| Email (CSS inlining) | `vanng822/go-premailer` | MIT |
+| MCP | `mark3labs/mcp-go` | MIT |
+| UUID | `google/uuid` | BSD-3-Clause |
+| CEL expressions | `google/cel-go` | Apache-2.0 |
+| Linter | `golangci-lint` | MIT |
+| Build tooling | `mise` | MIT |
 
 All permissively licensed — no GPL/LGPL/AGPL.
 
