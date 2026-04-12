@@ -3,7 +3,7 @@
 Items identified during the skeleton app build that are out of scope
 for the initial implementation but worth revisiting.
 
-## #1 — Typography and Font Faces
+## #1 — Typography and Font Faces ✅
 
 - Add `fontSans` and `fontMono` to `brand.json` as the single source
   of truth for typography across dashboard and email
@@ -17,7 +17,7 @@ for the initial implementation but worth revisiting.
 - Both the Maizzle `tailwind.config.js` and the dashboard `index.css`
   `@theme` block should consume the same font values from `brand.json`
 
-## #2 — Contrast and Accessibility
+## #2 — Contrast and Accessibility ✅
 
 - Dark mode has contrast issues — dark text on dark backgrounds in
   several components. The brand palette (`#1a1a2e` primary, `#16213e`
@@ -32,7 +32,7 @@ for the initial implementation but worth revisiting.
   checkboxes, and radio buttons against a 3:1 minimum
 - Run contrast checks in CI as part of `mise run ci`
 
-## #3 — StatusBadge Color Differentiation
+## #3 — StatusBadge Color Differentiation ✅
 
 - `pending` and `sending` both use yellow — they should be visually
   distinct since they represent different stages
@@ -40,7 +40,7 @@ for the initial implementation but worth revisiting.
 - Final palette: pending=yellow, sending=purple, delivered=green,
   failed=red, not_sent=orange
 
-## #4 — Button Variants
+## #4 — Button Variants ✅
 
 - Add color variants that match the status badge palette for
   visual consistency: success (green), warning (orange), info
@@ -122,7 +122,7 @@ for the initial implementation but worth revisiting.
 - Fix: MCP tools should follow the same pattern as HTTP handlers —
   return a generic error message to the client, log the real error
 
-## #11 — Security: WebSocket Origin Validation (HIGH)
+## #11 — Security: WebSocket Origin Validation (HIGH) ✅
 
 - `websocket.Accept(w, r, nil)` accepts connections from any origin
 - Any webpage on any domain can open a WebSocket and receive all
