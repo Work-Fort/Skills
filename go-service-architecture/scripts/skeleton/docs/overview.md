@@ -29,6 +29,9 @@ POST /v1/notify { email }
   undeliverable address without needing a real mail server.
 - A reset endpoint clears the notification record, allowing the
   address to be notified again.
+- Email sending has a 6-second artificial delay to simulate real
+  delivery latency. This makes the `pending → sending → delivered`
+  state transitions visible in the dashboard in real time.
 
 ### Branding and Design
 
@@ -54,10 +57,12 @@ in a real system.
 | Background queue | goqite | Async processing — payment processing, image resizing, report generation, webhook delivery |
 | State machine | stateless | Lifecycle tracking — order fulfillment, approval workflows, incident management, deployment pipelines |
 | Duplicate prevention | Domain logic + store | Idempotency — payment deduplication, preventing double-submissions, at-most-once delivery |
+| 6-second send delay | Latency simulation | Async UX — showing progress for slow operations, optimistic UI, background processing feedback |
 | @example.com auto-fail | Error simulation | Graceful failure handling — unreachable services, invalid recipients, quota exhaustion |
 | Reset endpoint | State machine reset | Administrative actions — retry failed operations, re-process records, clear locks |
 | Audit log | Transition history table | Compliance — audit trails, change tracking, incident forensics |
 | React dashboard | Embedded SPA | Admin panels — monitoring dashboards, back-office tools, internal consoles |
+| WebSocket live updates | Real-time push to browser | Live dashboards — order tracking, deployment status, chat, monitoring alerts |
 | Tailwind + dark mode | CSS framework with theme switching | Design systems — consistent UI across light/dark themes, accessibility, user preference |
 | Shared brand styling | Same palette in frontend and email | Brand consistency — matching colors and typography across web, email, and print |
 | SPA embed + build tags | go:embed with conditional compilation | Single-binary deployment — CLI tools with web UIs, edge services, appliance software |
