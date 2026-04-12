@@ -17,7 +17,7 @@ func TestHandleWSAcceptsConnection(t *testing.T) {
 	defer cancel()
 	go hub.Run(ctx)
 
-	srv := httptest.NewServer(HandleWS(hub, ctx))
+	srv := httptest.NewServer(HandleWS(hub, ctx, []string{"127.0.0.1:*"}))
 	defer srv.Close()
 
 	// Connect a WebSocket client.
@@ -46,7 +46,7 @@ func TestHandleWSClientDisconnect(t *testing.T) {
 	defer cancel()
 	go hub.Run(ctx)
 
-	srv := httptest.NewServer(HandleWS(hub, ctx))
+	srv := httptest.NewServer(HandleWS(hub, ctx, []string{"127.0.0.1:*"}))
 	defer srv.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
@@ -72,7 +72,7 @@ func TestHandleWSMultipleClients(t *testing.T) {
 	defer cancel()
 	go hub.Run(ctx)
 
-	srv := httptest.NewServer(HandleWS(hub, ctx))
+	srv := httptest.NewServer(HandleWS(hub, ctx, []string{"127.0.0.1:*"}))
 	defer srv.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
@@ -116,7 +116,7 @@ func TestHandleWSNonUpgradeRequest(t *testing.T) {
 	go hub.Run(ctx)
 
 	// Send a plain HTTP GET (not a WebSocket upgrade).
-	handler := HandleWS(hub, ctx)
+	handler := HandleWS(hub, ctx, []string{"127.0.0.1:*"})
 	req := httptest.NewRequest(http.MethodGet, "/v1/ws", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -124,5 +124,27 @@ func TestHandleWSNonUpgradeRequest(t *testing.T) {
 	// websocket.Accept writes an error for non-upgrade requests.
 	if rec.Code == http.StatusSwitchingProtocols {
 		t.Error("expected non-upgrade response, got 101")
+	}
+}
+
+func TestHandleWSRejectsDisallowedOrigin(t *testing.T) {
+	hub := NewHub(1000)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go hub.Run(ctx)
+
+	// Only allow example.com -- the test server runs on 127.0.0.1
+	// so the Origin header will not match.
+	srv := httptest.NewServer(HandleWS(hub, ctx, []string{"example.com"}))
+	defer srv.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
+	_, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
+		HTTPHeader: http.Header{
+			"Origin": []string{"http://evil.attacker.com"},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected dial to fail for disallowed origin")
 	}
 }

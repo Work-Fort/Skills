@@ -148,7 +148,7 @@ func TestReadPumpRejectsLargeFrame(t *testing.T) {
 	defer cancel()
 	go hub.Run(ctx)
 
-	srv := httptest.NewServer(HandleWS(hub, ctx))
+	srv := httptest.NewServer(HandleWS(hub, ctx, []string{"127.0.0.1:*"}))
 	defer srv.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
