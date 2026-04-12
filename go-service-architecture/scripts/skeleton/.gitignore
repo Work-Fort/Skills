@@ -22,3 +22,4 @@ Thumbs.db
 
 # Email build output
 email/dist/
+email/node_modules/

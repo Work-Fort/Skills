@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Build email templates (Maizzle + Tailwind CSS inlining)"
+set -euo pipefail
+
+cd email
+npm ci --silent
+npx maizzle build production
+
+# Copy plaintext templates to dist (Maizzle only processes HTML).
+cp emails/*.txt dist/

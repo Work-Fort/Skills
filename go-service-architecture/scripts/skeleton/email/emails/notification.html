@@ -1,0 +1,33 @@
+---
+subject: "You have a new notification"
+---
+
+<x-main>
+  <table class="w-full">
+    <tr>
+      <td class="bg-brand-primary p-6">
+        <h1 class="text-brand-text text-2xl font-bold m-0">Notifier</h1>
+      </td>
+    </tr>
+    <tr>
+      <td class="bg-brand-surface p-6">
+        <p class="text-brand-text text-base m-0 mb-4">
+          Hello,
+        </p>
+        <p class="text-brand-text text-base m-0 mb-4">
+          A notification has been sent to <strong>@{{ .Email }}</strong>.
+        </p>
+        <p class="text-brand-text text-base m-0 mb-4">
+          Notification ID: <code>@{{ .ID }}</code>
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td class="bg-brand-primary p-4">
+        <p class="text-brand-text text-xs m-0 text-center">
+          Sent by Notifier &bull; Request @{{ .RequestID }}
+        </p>
+      </td>
+    </tr>
+  </table>
+</x-main>

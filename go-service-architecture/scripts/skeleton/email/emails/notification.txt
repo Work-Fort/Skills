@@ -1,0 +1,8 @@
+Hello,
+
+A notification has been sent to {{ .Email }}.
+
+Notification ID: {{ .ID }}
+
+--
+Sent by Notifier | Request {{ .RequestID }}
