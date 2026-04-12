@@ -13,6 +13,11 @@ type NotificationStore interface {
 	ListNotifications(ctx context.Context, after string, limit int) ([]*Notification, error)
 }
 
+// TransitionLogger records state transitions for audit purposes.
+type TransitionLogger interface {
+	LogTransition(ctx context.Context, entityType, entityID string, from, to Status, trigger Trigger) error
+}
+
 // HealthChecker verifies the backing store is reachable.
 type HealthChecker interface {
 	Ping(ctx context.Context) error
@@ -23,6 +28,7 @@ type HealthChecker interface {
 // not Store.
 type Store interface {
 	NotificationStore
+	TransitionLogger
 	HealthChecker
 	io.Closer
 }
