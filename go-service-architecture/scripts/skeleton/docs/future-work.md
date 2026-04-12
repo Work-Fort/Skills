@@ -188,12 +188,15 @@ for the initial implementation but worth revisiting.
   `os.Exit(1)` swallows all startup errors — user sees no output
 - Need to print the error to stderr before exiting
 
-## #19 — QA Seed Data Not Idempotent
+## #19 — QA Build Should Use In-Memory SQLite
 
-- Re-running the QA binary on an existing database fails with
-  `UNIQUE constraint failed: notifications.email`
-- Seed SQL should use `INSERT OR IGNORE` or check for existing
-  records before inserting
+- QA builds should be fully ephemeral — no on-disk database
+- Use SQLite in-memory mode (empty DSN `""`) so data is fresh on
+  every startup and the QA seed always runs cleanly
+- This also fixes the non-idempotent seed issue (unique constraint
+  failure on re-run) since there's no persistent state to conflict
+- The `--db` flag should be ignored or overridden in QA builds, or
+  the daemon should default to in-memory when built with the `qa` tag
 
 ## #20 — Table Layout Shift on Resend Click
 
