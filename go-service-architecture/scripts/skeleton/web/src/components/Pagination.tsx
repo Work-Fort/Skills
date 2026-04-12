@@ -76,7 +76,7 @@ export function Pagination({
 
   return (
     <nav
-      className="flex items-center justify-between border-t border-gray-200 px-4 py-3 dark:border-gray-700"
+      className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-brand-primary"
       aria-label="Pagination"
     >
       <Button
@@ -92,7 +92,7 @@ export function Pagination({
           page === null ? (
             <span
               key={`ellipsis-${index}`}
-              className="px-2 text-gray-400 dark:text-gray-500"
+              className="px-2 text-gray-700 dark:text-brand-text"
               aria-hidden="true"
             >
               ...
@@ -111,7 +111,7 @@ export function Pagination({
         )}
       </div>
 
-      <div className="text-sm text-gray-500 dark:text-gray-400">
+      <div className="text-sm text-gray-700 dark:text-brand-text">
         Page {currentPage} of {totalPages}
       </div>
 
