@@ -457,6 +457,47 @@ func TestResetNotificationToolStateMachineErrorSanitized(t *testing.T) {
 	}
 }
 
+func TestListNotificationsToolTotalCount(t *testing.T) {
+	store := newStubStore()
+	for i := 0; i < 5; i++ {
+		store.notifications[fmt.Sprintf("user%d@test.com", i)] = &domain.Notification{
+			ID:     fmt.Sprintf("ntf_mcp-%d", i),
+			Email:  fmt.Sprintf("user%d@test.com", i),
+			Status: domain.StatusPending,
+		}
+	}
+	handler := HandleListNotifications(store)
+
+	req := gomcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"limit": 2}
+
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := result.Content[0].(gomcp.TextContent).Text
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(text), &parsed); err != nil {
+		t.Fatalf("result is not valid JSON: %v", err)
+	}
+
+	meta, ok := parsed["meta"].(map[string]any)
+	if !ok {
+		t.Fatal("missing meta object in response")
+	}
+
+	totalCount := int(meta["total_count"].(float64))
+	if totalCount != 5 {
+		t.Errorf("total_count = %d, want 5", totalCount)
+	}
+
+	totalPages := int(meta["total_pages"].(float64))
+	if totalPages != 3 {
+		t.Errorf("total_pages = %d, want 3", totalPages)
+	}
+}
+
 func TestResetNotificationToolUpdateErrorSanitized(t *testing.T) {
 	store := &failUpdateStore{
 		stubNotificationStore: stubNotificationStore{

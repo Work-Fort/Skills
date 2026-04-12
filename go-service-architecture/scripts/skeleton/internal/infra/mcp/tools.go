@@ -126,6 +126,18 @@ func HandleListNotifications(store domain.NotificationStore) server.ToolHandlerF
 			return gomcp.NewToolResultError("internal error"), nil
 		}
 
+		totalCount, err := store.CountNotifications(ctx)
+		if err != nil {
+			slog.Error("count notifications failed", "error", err)
+			return gomcp.NewToolResultError("internal error"), nil
+		}
+
+		// Compute total pages: ceil(totalCount / limit).
+		totalPages := 0
+		if totalCount > 0 {
+			totalPages = (totalCount + limit - 1) / limit
+		}
+
 		type item struct {
 			ID         string `json:"id"`
 			Email      string `json:"email"`
@@ -150,6 +162,10 @@ func HandleListNotifications(store domain.NotificationStore) server.ToolHandlerF
 
 		result, _ := json.Marshal(map[string]any{
 			"notifications": items,
+			"meta": map[string]any{
+				"total_count": totalCount,
+				"total_pages": totalPages,
+			},
 		})
 		return gomcp.NewToolResultText(string(result)), nil
 	}
