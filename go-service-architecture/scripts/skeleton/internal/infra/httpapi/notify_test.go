@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -186,5 +187,27 @@ func TestHandleNotifyRequestIDPropagation(t *testing.T) {
 	}
 	if payload["request_id"] != "req_test-123" {
 		t.Errorf("request_id = %q, want %q", payload["request_id"], "req_test-123")
+	}
+}
+
+func TestHandleNotifyOversizedBody(t *testing.T) {
+	store := newStubStore()
+	enqueuer := &stubEnqueuer{}
+	handler := HandleNotify(store, enqueuer)
+
+	// Create a body larger than 1 MB.
+	body := make([]byte, 1<<20+1)
+	for i := range body {
+		body[i] = 'a'
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/notify", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }

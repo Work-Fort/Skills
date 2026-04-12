@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -172,5 +173,26 @@ func TestHandleResetFromNotSent(t *testing.T) {
 	}
 	if n.RetryCount != 0 {
 		t.Errorf("retry_count = %d, want 0", n.RetryCount)
+	}
+}
+
+func TestHandleResetOversizedBody(t *testing.T) {
+	store := newResetStubStore()
+	handler := HandleReset(store)
+
+	// Create a body larger than 1 MB.
+	body := make([]byte, 1<<20+1)
+	for i := range body {
+		body[i] = 'a'
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/notify/reset", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }

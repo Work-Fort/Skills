@@ -22,6 +22,8 @@ type resetRequest struct {
 // Content.
 func HandleReset(store domain.ResetStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit (REQ-018)
+
 		var req resetRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{

@@ -25,6 +25,8 @@ type notifyResponse struct {
 // a delivery job. Email sending is asynchronous (REQ-005).
 func HandleNotify(store domain.NotificationStore, enqueuer domain.Enqueuer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit (REQ-030)
+
 		var req notifyRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{
