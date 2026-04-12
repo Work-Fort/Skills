@@ -3,10 +3,39 @@
 /* Dark mode: class strategy (add/remove "dark" on <html>) */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Brand colors — must match brand.json at project root */
+/* Brand colors and fonts — must match brand.json at project root */
 @theme {
+  --font-sans: "Inter", "ui-sans-serif", "system-ui", "sans-serif";
+  --font-mono: "JetBrains Mono", "ui-monospace", "monospace";
+
   --color-brand-primary: #1a1a2e;
   --color-brand-accent: #e94560;
   --color-brand-surface: #16213e;
   --color-brand-text: #eaeaea;
+
+  /* Semantic tokens — light mode defaults */
+  --color-semantic-success-bg: #dcfce7;
+  --color-semantic-success-text: #166534;
+  --color-semantic-warning-bg: #ffedd5;
+  --color-semantic-warning-text: #9a3412;
+  --color-semantic-danger-bg: #fee2e2;
+  --color-semantic-danger-text: #991b1b;
+  --color-semantic-info-bg: #f3e8ff;
+  --color-semantic-info-text: #6b21a8;
+  --color-semantic-neutral-bg: #fef9c3;
+  --color-semantic-neutral-text: #854d0e;
+}
+
+/* Semantic tokens — dark mode overrides */
+.dark {
+  --color-semantic-success-bg: #052e16;
+  --color-semantic-success-text: #86efac;
+  --color-semantic-warning-bg: #431407;
+  --color-semantic-warning-text: #fdba74;
+  --color-semantic-danger-bg: #450a0a;
+  --color-semantic-danger-text: #fca5a5;
+  --color-semantic-info-bg: #3b0764;
+  --color-semantic-info-text: #d8b4fe;
+  --color-semantic-neutral-bg: #422006;
+  --color-semantic-neutral-text: #fde047;
 }

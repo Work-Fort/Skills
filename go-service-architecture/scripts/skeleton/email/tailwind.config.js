@@ -18,6 +18,10 @@ export default {
           text: brand.text,
         },
       },
+      fontFamily: {
+        sans: brand.fontSans.split(', '),
+        mono: brand.fontMono.split(', '),
+      },
     },
   },
 }
