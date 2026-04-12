@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/workfort/notifier/cmd/daemon"
+	mcpbridge "github.com/workfort/notifier/cmd/mcp-bridge"
 	"github.com/workfort/notifier/internal/config"
 )
 
@@ -31,6 +32,7 @@ func NewRootCmd() *cobra.Command {
 		SilenceErrors: true,
 	}
 	cmd.AddCommand(daemon.NewCmd())
+	cmd.AddCommand(mcpbridge.NewCmd())
 	return cmd
 }
 
