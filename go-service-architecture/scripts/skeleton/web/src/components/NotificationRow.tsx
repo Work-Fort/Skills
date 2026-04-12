@@ -30,7 +30,7 @@ export function NotificationRow({
   const showResend = onResend && resendableStates.includes(status)
 
   return (
-    <tr className="border-b border-gray-200 dark:border-gray-700">
+    <tr>
       <td className="whitespace-nowrap px-4 py-3 text-sm font-mono text-gray-600 dark:text-gray-400">
         {id}
       </td>
