@@ -87,7 +87,7 @@ mise run lint:go     # or equivalent
 
 All must pass cleanly. Warnings count as failures.
 
-**E2E regression check:** If an E2E test suite exists, run it. E2E tests are not just for the step that created them — they validate the full system after every change. A step that only modifies the state machine can still break the notify endpoint.
+**E2E regression check:** If an E2E test suite exists, run it. E2E tests are not just for the step that created them — they validate the full system after every change. A step that only modifies internal logic can still break API endpoints.
 
 ### 6. Functional verification
 

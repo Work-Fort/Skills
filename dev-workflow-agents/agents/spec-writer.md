@@ -94,7 +94,7 @@ Every spec follows this structure:
 - Each requirement gets a unique ID within the spec (REQ-001, REQ-002, ...).
 - Requirements must be testable. If you cannot write a scenario that verifies it, rewrite it.
 - Group related requirements under descriptive headings.
-- **Be precise, not abstract.** Specify exact HTTP status codes (202, 409, 422, 404, 503), exact response body formats, exact library names, and exact configuration values. "Return a success response" is too vague — "return HTTP 202 with the notification ID in the response body" is a requirement.
+- **Be precise, not abstract.** Specify exact HTTP status codes, exact response body formats, exact library names, and exact configuration values. For example, "return a success response" is too vague — "return HTTP 202 with the entity ID in the response body" is a requirement.
 - **Include architecture constraints.** If a component must live in a specific layer (domain vs infra), or must implement a port interface, or must use a specific pattern (accessor/mutator, iota enums), state it as a SHALL requirement.
 - **Include implementation-critical details.** Library names, database pragmas, timeout values, connection pool settings, and build flags are not optional details — they affect correctness and must be specified. An implementer should not have to guess which library to use.
 - **Don't drop secondary requirements.** UX details (loading states, system preference detection), tooling requirements (Storybook format, accessibility addons), and fallback behaviors (plaintext email body) are real requirements. Include them.
@@ -113,12 +113,13 @@ Every spec follows this structure:
 - Scenarios verify requirements. Every requirement should have at least one scenario.
 - Keep scenarios concrete — use specific values, not abstractions.
 - Format scenarios as bullet lists, not code blocks:
+  Example:
   ```
-  #### Scenario: Duplicate notification rejected
-  - GIVEN an email address that has already been notified
-  - WHEN a POST request is sent to `/v1/notify` with that email
+  #### Scenario: Duplicate record rejected
+  - GIVEN a record that already exists
+  - WHEN a POST request is sent to create it again
   - THEN the system SHALL return HTTP 409
-  - AND the response body SHALL contain "already notified"
+  - AND the response body SHALL contain "already exists"
   ```
 
 ## Creating a New Spec
@@ -345,8 +346,8 @@ After the proposal is approved, apply the delta to the spec file. The spec must 
 - Proposals without a spec delta (every change must show its impact on requirements)
 - **Generalizing away precision.** "Return a success response" instead of "return HTTP 202 with JSON body `{id, state}`". Vague specs produce wrong implementations.
 - **Dropping architecture constraints.** Port interfaces, domain isolation, layer placement, and structural patterns are requirements. Omitting them produces architecturally unsound code.
-- **Omitting library and tooling names.** If the project uses `qmuntal/stateless` for state machines, say so. An implementer choosing a different library will produce incompatible code.
-- **Getting state transitions wrong.** When specifying state machines, trace every path carefully. A shortcut like "pending → sending → failed" when the actual path is "pending → failed" (skipping sending) is a behavioral error that produces wrong code.
+- **Omitting library and tooling names.** If the project uses a specific library, name it. An implementer choosing a different library will produce incompatible code.
+- **Getting state transitions wrong.** When specifying state machines, trace every path carefully. For example, a shortcut like "A → B → C" when the actual path is "A → C" (skipping B) is a behavioral error that produces wrong code.
 - **Dropping secondary UX requirements.** Loading states, accessibility, system preference detection, plaintext fallbacks, and Storybook configuration are not nice-to-haves — they are requirements that affect user experience and compliance.
 - **Using descriptive language in scenarios instead of prescriptive.** THEN clauses must use SHALL. "The response is 404" is descriptive. "The system SHALL return HTTP 404" is prescriptive.
 - **Inconsistent state machines across specs.** If two specs reference the same state machine, they must use identical transition lists. Review all specs that mention the same states before finalizing.

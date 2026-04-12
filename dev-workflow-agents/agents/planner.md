@@ -220,7 +220,7 @@ numbered sub-plans. Each sub-plan goes through the full lifecycle
 **Splitting rules:**
 
 1. **Split by capability, not by layer.** Group by what the user
-   gets, not by architectural concern. "Notification delivery" is a
+   gets, not by architectural concern. "User authentication" is a
    good plan. "Add all domain types" is not — it delivers nothing
    testable on its own.
 2. **Each sub-plan must deliver working, testable functionality.**
@@ -236,7 +236,7 @@ numbered sub-plans. Each sub-plan goes through the full lifecycle
    during implementation.
 6. **Include E2E tests in the plan that completes a capability.**
    Don't defer all testing to the end. Each sub-plan should include
-   tests for what it delivers, including Mailpit for email E2E tests.
+   tests for what it delivers.
 
 **Example split for a full-stack service:**
 
