@@ -49,6 +49,7 @@ No `pkg/` directory — use `internal/` or flat layout.
 | Migrations | `pressly/goose/v3` | MIT |
 | Background queue | `maragu.dev/goqite` | MIT |
 | State machine | `qmuntal/stateless` | BSD-2-Clause |
+| WebSocket | `coder/websocket` | ISC |
 | Email (SMTP) | `wneessen/go-mail` | MIT |
 | Email (parsing) | `jhillyerd/enmime` | MIT |
 | Email (CSS inlining) | `vanng822/go-premailer` | MIT |

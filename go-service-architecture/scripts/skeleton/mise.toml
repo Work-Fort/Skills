@@ -1,0 +1,5 @@
+[tools]
+go = "1.26.0"
+node = "22"
+"npm:tailwindcss" = "latest"
+"aqua:axllent/mailpit" = "latest"
