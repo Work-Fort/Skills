@@ -91,7 +91,9 @@ Spec Writer → Planner → Assessor → [Revise] → TPM Approve
 - **TPM → Developer:** Plan approved. Developer executes.
 - **Developer → Reviewer:** Implementation complete. Do NOT push.
 - **Reviewer → Developer:** If changes requested, developer fixes.
-- **Reviewer → QA:** If approved, QA validates end-to-end.
+- **Reviewer → QA:** After reviewer approves, QA runs. This is
+  mandatory for every step, not optional. QA validates the full
+  system end-to-end after every change.
 - **QA → Planner:** If bugs found, planner creates fix steps.
 
 ### Key rules
@@ -100,6 +102,10 @@ Spec Writer → Planner → Assessor → [Revise] → TPM Approve
   developing, reviewing, and testing are done by dispatched agents.
 - **One agent per role per task.** Don't reuse an agent across roles.
 - **Agents are task-scoped.** Spawn fresh agents for each step.
+- **QA runs after every successful review.** Not just steps that
+  add user-facing features. Any step that changes backend behavior
+  can break existing functionality. If E2E tests exist, QA runs them.
+  If no E2E tests exist yet (e.g., Step 1-2), QA is skipped.
 - **Do not commit completion docs until reviewer approves.**
 - **Do not push until team lead explicitly authorizes.**
 
