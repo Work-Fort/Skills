@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -153,21 +154,23 @@ func RunServer(ctx context.Context, cfg ServerConfig) error {
 	return srv.Shutdown(shutdownCtx)
 }
 
-// resolveString reads from koanf if the key exists, otherwise from
-// the cobra flag.
+// resolveString reads from koanf if the key exists (checking both
+// hyphenated and dotted forms), otherwise from the cobra flag.
 func resolveString(cmd *cobra.Command, key string) string {
-	if config.K.Exists(key) {
-		return config.K.String(key)
+	dotKey := strings.ReplaceAll(key, "-", ".")
+	if config.K.Exists(dotKey) {
+		return config.K.String(dotKey)
 	}
 	v, _ := cmd.Flags().GetString(key)
 	return v
 }
 
-// resolveInt reads from koanf if the key exists, otherwise from
-// the cobra flag.
+// resolveInt reads from koanf if the key exists (checking both
+// hyphenated and dotted forms), otherwise from the cobra flag.
 func resolveInt(cmd *cobra.Command, key string) int {
-	if config.K.Exists(key) {
-		return config.K.Int(key)
+	dotKey := strings.ReplaceAll(key, "-", ".")
+	if config.K.Exists(dotKey) {
+		return config.K.Int(dotKey)
 	}
 	v, _ := cmd.Flags().GetInt(key)
 	return v
