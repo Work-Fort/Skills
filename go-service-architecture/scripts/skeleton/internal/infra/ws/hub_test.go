@@ -11,7 +11,7 @@ import (
 )
 
 func TestHubRegisterAndBroadcast(t *testing.T) {
-	hub := NewHub()
+	hub := NewHub(1000)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)
@@ -39,7 +39,7 @@ func TestHubRegisterAndBroadcast(t *testing.T) {
 }
 
 func TestHubUnregister(t *testing.T) {
-	hub := NewHub()
+	hub := NewHub(1000)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)
@@ -70,7 +70,7 @@ func TestHubUnregister(t *testing.T) {
 }
 
 func TestHubDropsSlowClient(t *testing.T) {
-	hub := NewHub()
+	hub := NewHub(1000)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)
@@ -124,7 +124,7 @@ func TestHubDropsSlowClient(t *testing.T) {
 }
 
 func TestHubContextCancellation(t *testing.T) {
-	hub := NewHub()
+	hub := NewHub(1000)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
@@ -143,7 +143,7 @@ func TestHubContextCancellation(t *testing.T) {
 }
 
 func TestReadPumpRejectsLargeFrame(t *testing.T) {
-	hub := NewHub()
+	hub := NewHub(1000)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)
@@ -174,5 +174,133 @@ func TestReadPumpRejectsLargeFrame(t *testing.T) {
 	_, _, err = conn.Read(ctx)
 	if err == nil {
 		t.Fatal("expected read error after oversized frame, got nil")
+	}
+}
+
+func TestHubRejectsRegistrationAtCapacity(t *testing.T) {
+	hub := NewHub(2) // limit to 2 connections
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go hub.Run(ctx)
+
+	// Register two clients (at capacity).
+	send1 := make(chan []byte, 256)
+	client1 := &Client{hub: hub, send: send1}
+	hub.Register(client1)
+
+	send2 := make(chan []byte, 256)
+	client2 := &Client{hub: hub, send: send2}
+	hub.Register(client2)
+
+	time.Sleep(10 * time.Millisecond)
+
+	// Third registration should be rejected.
+	send3 := make(chan []byte, 256)
+	client3 := &Client{hub: hub, send: send3}
+	hub.Register(client3)
+
+	time.Sleep(10 * time.Millisecond)
+
+	// The rejected client's send channel should be closed.
+	select {
+	case _, ok := <-send3:
+		if ok {
+			t.Error("expected rejected client's send channel to be closed")
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timed out waiting for rejected client channel close")
+	}
+
+	// The existing clients should still receive broadcasts.
+	hub.Broadcast([]byte(`{"id":"ntf_cap","state":"delivered"}`))
+
+	select {
+	case msg := <-send1:
+		if string(msg) != `{"id":"ntf_cap","state":"delivered"}` {
+			t.Errorf("client 1 msg = %q, want delivered message", string(msg))
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("client 1 timed out waiting for broadcast")
+	}
+
+	select {
+	case msg := <-send2:
+		if string(msg) != `{"id":"ntf_cap","state":"delivered"}` {
+			t.Errorf("client 2 msg = %q, want delivered message", string(msg))
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("client 2 timed out waiting for broadcast")
+	}
+}
+
+func TestHubAcceptsBelowCapacity(t *testing.T) {
+	hub := NewHub(2) // limit to 2 connections
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go hub.Run(ctx)
+
+	// Register one client (below capacity).
+	send1 := make(chan []byte, 256)
+	client1 := &Client{hub: hub, send: send1}
+	hub.Register(client1)
+
+	time.Sleep(10 * time.Millisecond)
+
+	// Second registration should succeed.
+	send2 := make(chan []byte, 256)
+	client2 := &Client{hub: hub, send: send2}
+	hub.Register(client2)
+
+	time.Sleep(10 * time.Millisecond)
+
+	// Both clients should receive broadcasts.
+	hub.Broadcast([]byte(`{"id":"ntf_below","state":"sending"}`))
+
+	for i, send := range []chan []byte{send1, send2} {
+		select {
+		case msg := <-send:
+			if string(msg) != `{"id":"ntf_below","state":"sending"}` {
+				t.Errorf("client %d msg = %q, want sending message", i+1, string(msg))
+			}
+		case <-time.After(100 * time.Millisecond):
+			t.Fatalf("client %d timed out waiting for broadcast", i+1)
+		}
+	}
+}
+
+func TestHubAcceptsAfterUnregister(t *testing.T) {
+	hub := NewHub(1) // limit to 1 connection
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go hub.Run(ctx)
+
+	// Register one client (at capacity).
+	send1 := make(chan []byte, 256)
+	client1 := &Client{hub: hub, send: send1}
+	hub.Register(client1)
+
+	time.Sleep(10 * time.Millisecond)
+
+	// Unregister to free a slot.
+	hub.Unregister(client1)
+
+	time.Sleep(10 * time.Millisecond)
+
+	// New registration should succeed.
+	send2 := make(chan []byte, 256)
+	client2 := &Client{hub: hub, send: send2}
+	hub.Register(client2)
+
+	time.Sleep(10 * time.Millisecond)
+
+	hub.Broadcast([]byte(`{"id":"ntf_free","state":"pending"}`))
+
+	select {
+	case msg := <-send2:
+		if string(msg) != `{"id":"ntf_free","state":"pending"}` {
+			t.Errorf("msg = %q, want pending message", string(msg))
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timed out waiting for broadcast after unregister + re-register")
 	}
 }

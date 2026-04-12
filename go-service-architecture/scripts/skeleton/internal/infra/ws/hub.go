@@ -67,15 +67,20 @@ type Hub struct {
 	broadcast  chan []byte
 	register   chan *Client
 	unregister chan *Client
+	maxConns   int
 }
 
 // NewHub creates a hub with a buffered broadcast channel (REQ-008).
-func NewHub() *Hub {
+// maxConns sets the maximum number of concurrent client connections.
+// Registrations above this limit are rejected by closing the client's
+// send channel (REQ-017, REQ-018, REQ-019).
+func NewHub(maxConns int) *Hub {
 	return &Hub{
 		clients:    make(map[*Client]struct{}),
 		broadcast:  make(chan []byte, 256),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
+		maxConns:   maxConns,
 	}
 }
 
@@ -102,7 +107,15 @@ func (h *Hub) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case c := <-h.register:
-			h.clients[c] = struct{}{}
+			if len(h.clients) >= h.maxConns {
+				// At capacity -- reject the registration by closing
+				// the send channel. WritePump will detect the closed
+				// channel and close the underlying connection, which
+				// causes ReadPump to exit (REQ-018).
+				close(c.send)
+			} else {
+				h.clients[c] = struct{}{}
+			}
 		case c := <-h.unregister:
 			if _, ok := h.clients[c]; ok {
 				delete(h.clients, c)

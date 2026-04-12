@@ -12,7 +12,7 @@ import (
 )
 
 func TestHandleWSAcceptsConnection(t *testing.T) {
-	hub := NewHub()
+	hub := NewHub(1000)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)
@@ -41,7 +41,7 @@ func TestHandleWSAcceptsConnection(t *testing.T) {
 }
 
 func TestHandleWSClientDisconnect(t *testing.T) {
-	hub := NewHub()
+	hub := NewHub(1000)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)
@@ -67,7 +67,7 @@ func TestHandleWSClientDisconnect(t *testing.T) {
 }
 
 func TestHandleWSMultipleClients(t *testing.T) {
-	hub := NewHub()
+	hub := NewHub(1000)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)
@@ -110,7 +110,7 @@ func TestHandleWSMultipleClients(t *testing.T) {
 }
 
 func TestHandleWSNonUpgradeRequest(t *testing.T) {
-	hub := NewHub()
+	hub := NewHub(1000)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)

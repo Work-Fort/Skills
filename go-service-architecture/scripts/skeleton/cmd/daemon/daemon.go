@@ -152,7 +152,7 @@ func RunServer(ctx context.Context, cfg ServerConfig) error {
 	defer hubCancel()
 
 	// Create WebSocket hub and start it (REQ-006: before HTTP server).
-	hub := ws.NewHub()
+	hub := ws.NewHub(1000)
 	go hub.Run(hubCtx)
 
 	// Create a separate context for the job runner. Shutdown cancels
