@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Build QA binary with embedded SPA and seed data"
+#MISE depends=["build:web", "build:email"]
+set -euo pipefail
+
+CGO_ENABLED=0 go build \
+    -tags spa,qa \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o build/notifier .
