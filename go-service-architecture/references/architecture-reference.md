@@ -316,6 +316,251 @@ r.Start(ctx)
 
 ---
 
+## State Machines and Workflows
+
+Three tiers depending on complexity. Choose the simplest that fits.
+
+### Tier 1: Hand-Rolled Transition Map
+
+For simple state machines (3-5 states, no guards, no visualization):
+
+```go
+type OrderState int
+
+const (
+    OrderDraft OrderState = iota
+    OrderSubmitted
+    OrderApproved
+    OrderRejected
+)
+
+type OrderEvent int
+
+const (
+    EventSubmit OrderEvent = iota
+    EventApprove
+    EventReject
+)
+
+var orderTransitions = map[OrderState]map[OrderEvent]OrderState{
+    OrderDraft:     {EventSubmit: OrderSubmitted},
+    OrderSubmitted: {EventApprove: OrderApproved, EventReject: OrderRejected},
+}
+
+func (o *Order) Apply(event OrderEvent) error {
+    targets, ok := orderTransitions[o.State]
+    if !ok {
+        return fmt.Errorf("no transitions from state %d", o.State)
+    }
+    next, ok := targets[event]
+    if !ok {
+        return fmt.Errorf("event %d not valid in state %d", event, o.State)
+    }
+    o.State = next
+    return nil
+}
+```
+
+Zero dependencies, compile-time type safety with iota enums, trivially
+testable. Migrate to `stateless` later if complexity grows — the domain
+types (state enums, transition rules) transfer directly.
+
+### Tier 2: stateless Library
+
+For complex transitions with guards, callbacks, persistence, and
+visualization. Use `qmuntal/stateless` (BSD-2-Clause, zero external
+dependencies, stdlib only).
+
+#### Domain Definition
+
+State machine configuration lives in the domain layer. States and
+triggers are iota enums:
+
+```go
+package domain
+
+import "github.com/qmuntal/stateless"
+
+type TicketState int
+
+const (
+    TicketOpen TicketState = iota
+    TicketInProgress
+    TicketReview
+    TicketResolved
+    TicketClosed
+)
+
+type TicketTrigger int
+
+const (
+    TriggerAssign TicketTrigger = iota
+    TriggerSubmitForReview
+    TriggerApprove
+    TriggerReject
+    TriggerClose
+    TriggerReopen
+)
+
+func ConfigureTicketMachine(
+    accessor func(ctx context.Context) (stateless.State, error),
+    mutator func(ctx context.Context, state stateless.State) error,
+) *stateless.StateMachine {
+    sm := stateless.NewStateMachineWithExternalStorage(accessor, mutator, stateless.FiringQueued)
+
+    sm.Configure(TicketOpen).
+        Permit(TriggerAssign, TicketInProgress)
+
+    sm.Configure(TicketInProgress).
+        Permit(TriggerSubmitForReview, TicketReview).
+        Permit(TriggerClose, TicketClosed)
+
+    sm.Configure(TicketReview).
+        Permit(TriggerApprove, TicketResolved).
+        Permit(TriggerReject, TicketInProgress).
+        OnEntry(func(ctx context.Context, args ...any) error {
+            // notify reviewer
+            return nil
+        })
+
+    sm.Configure(TicketResolved).
+        Permit(TriggerClose, TicketClosed).
+        Permit(TriggerReopen, TicketOpen)
+
+    sm.Configure(TicketClosed).
+        Permit(TriggerReopen, TicketOpen)
+
+    return sm
+}
+```
+
+The `accessor` and `mutator` are plain functions — no infra imports in
+the domain. The infra layer provides concrete implementations.
+
+#### Guards
+
+Guards are predicates that must be true for a transition to fire:
+
+```go
+sm.Configure(TicketReview).
+    PermitIf(TriggerApprove, TicketResolved,
+        func(ctx context.Context, args ...any) bool {
+            return args[0].(*Ticket).TestsPassing
+        },
+    )
+```
+
+Guards within a state must be mutually exclusive.
+
+#### Infra Adapter (Persistence)
+
+```go
+func (s *Store) TicketStateAccessor(ticketID string) func(ctx context.Context) (stateless.State, error) {
+    return func(ctx context.Context) (stateless.State, error) {
+        var state int
+        err := s.db.QueryRowContext(ctx,
+            "SELECT state FROM tickets WHERE id = ?", ticketID,
+        ).Scan(&state)
+        return stateless.State(state), err
+    }
+}
+
+func (s *Store) TicketStateMutator(ticketID string) func(ctx context.Context, state stateless.State) error {
+    return func(ctx context.Context, state stateless.State) error {
+        _, err := s.db.ExecContext(ctx,
+            "UPDATE tickets SET state = ?, updated_at = ? WHERE id = ?",
+            int(state.(TicketState)), time.Now().UTC(), ticketID,
+        )
+        return err
+    }
+}
+```
+
+#### Transition Audit Log (Optional)
+
+For audit trails, log transitions in the store:
+
+```go
+_, err = s.db.ExecContext(ctx,
+    `INSERT INTO state_transitions (entity_type, entity_id, from_state, to_state, trigger, actor_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    "ticket", ticketID, fromState, toState, trigger, actorID, time.Now().UTC(),
+)
+```
+
+#### Visualization
+
+Export to Graphviz DOT format for documentation:
+
+```go
+graph := sm.ToGraph()
+// renders DOT format — pipe to `dot -Tsvg` for visual
+```
+
+### Tier 3: Workflow Engine
+
+For complex business processes with directed graphs, role-based
+permissions, integration hooks, and work item tracking. This goes
+beyond a single entity's state machine into orchestrating multi-step
+processes across teams and systems.
+
+A workflow engine provides three layers:
+
+- **Templates** — process blueprints defining steps (graph nodes),
+  transitions (graph edges), role permissions, and integration hooks
+- **Instances** — bind a template to a team and its integrations
+  (git forge, chat, identity provider)
+- **Work items** — flow through an instance, moving between steps as
+  agents or humans trigger transitions
+
+```
+Template (blueprint)
+  |
+  +-- Instance (bound to team + integrations)
+        |
+        +-- Work Item --> [Step A] --transition--> [Step B] --> ...
+```
+
+#### Guard Expressions with CEL
+
+Use `google/cel-go` (already in the library stack) for transition guard
+expressions. CEL is non-Turing-complete, safe to evaluate with
+untrusted input, and used by Kubernetes and Google Cloud IAM:
+
+```go
+// Guard expression stored as a string in the template
+guard := `assignee.role == "reviewer" && item.fields.tests_passing == true`
+
+// Evaluate at transition time
+env, _ := cel.NewEnv(
+    cel.Variable("assignee", cel.ObjectType("Agent")),
+    cel.Variable("item", cel.ObjectType("WorkItem")),
+)
+ast, _ := env.Compile(guard)
+prg, _ := env.Program(ast)
+out, _, _ := prg.Eval(map[string]any{
+    "assignee": assignee,
+    "item":     workItem,
+})
+if out.Value().(bool) {
+    // transition allowed
+}
+```
+
+#### When to Use Each Tier
+
+| Signals | Tier |
+|---------|------|
+| Single entity, few states, no guards | Hand-rolled map |
+| Single entity, complex transitions, guards, persistence | `stateless` |
+| Multi-step process, multiple roles, integrations, work item tracking | Workflow engine |
+
+Most services start with hand-rolled and grow into `stateless`. A
+workflow engine is a separate service, not a library added to an
+existing service.
+
+---
+
 ## Email
 
 ### Port Interface
