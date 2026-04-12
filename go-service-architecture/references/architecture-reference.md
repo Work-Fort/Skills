@@ -316,6 +316,184 @@ r.Start(ctx)
 
 ---
 
+## Email
+
+### Port Interface
+
+```go
+// EmailSender sends email messages. Implementations live in infra/.
+type EmailSender interface {
+    Send(ctx context.Context, msg *EmailMessage) error
+}
+
+type EmailMessage struct {
+    To      []string
+    Subject string
+    HTML    string
+    Text    string
+}
+```
+
+Handlers and services accept `EmailSender`, not a concrete SMTP client.
+
+### SMTP Adapter
+
+Use `wneessen/go-mail` for SMTP sending. It supports STARTTLS, implicit
+TLS, and XOAUTH2 (required by Gmail and Microsoft). CGO-free, stdlib
+dependencies only.
+
+```go
+import gomail "github.com/wneessen/go-mail"
+
+type SMTPSender struct {
+    client *gomail.Client
+    from   string
+}
+
+func NewSMTPSender(host string, port int, user, pass, from string) (*SMTPSender, error) {
+    c, err := gomail.NewClient(host,
+        gomail.WithPort(port),
+        gomail.WithSMTPAuth(gomail.SMTPAuthPlain),
+        gomail.WithUsername(user),
+        gomail.WithPassword(pass),
+        gomail.WithTLSPolicy(gomail.TLSMandatory),
+    )
+    if err != nil {
+        return nil, fmt.Errorf("create smtp client: %w", err)
+    }
+    return &SMTPSender{client: c, from: from}, nil
+}
+
+func (s *SMTPSender) Send(ctx context.Context, msg *EmailMessage) error {
+    m := gomail.NewMsg()
+    if err := m.From(s.from); err != nil {
+        return fmt.Errorf("set from: %w", err)
+    }
+    if err := m.To(msg.To...); err != nil {
+        return fmt.Errorf("set to: %w", err)
+    }
+    m.Subject(msg.Subject)
+    m.SetBodyString(gomail.TypeTextHTML, msg.HTML)
+    m.AddAlternativeString(gomail.TypeTextPlain, msg.Text)
+    return s.client.DialAndSend(m)
+}
+```
+
+Do not send email synchronously in HTTP handlers. Enqueue via goqite
+and send from a background worker:
+
+```go
+// In the handler or service:
+jobs.Create(ctx, q, "send_email", emailPayload)
+
+// In the job runner:
+r.Register("send_email", func(ctx context.Context, payload []byte) error {
+    var msg EmailMessage
+    json.Unmarshal(payload, &msg)
+    return sender.Send(ctx, &msg)
+})
+```
+
+Failed sends are automatically retried by goqite's visibility timeout.
+
+### Email Templating
+
+Use `html/template` with embedded templates and `go-premailer` for CSS
+inlining (required for email client compatibility):
+
+```go
+import (
+    "html/template"
+    "embed"
+    premailer "github.com/vanng822/go-premailer/premailer"
+)
+
+//go:embed templates/*.html
+var templateFS embed.FS
+
+var emailTemplates = template.Must(template.ParseFS(templateFS, "templates/*.html"))
+
+func RenderEmail(name string, data any) (string, error) {
+    var buf bytes.Buffer
+    if err := emailTemplates.ExecuteTemplate(&buf, name, data); err != nil {
+        return "", fmt.Errorf("render template %s: %w", name, err)
+    }
+    // Inline CSS for email client compatibility
+    p, err := premailer.NewPremailerFromString(buf.String(), nil)
+    if err != nil {
+        return "", fmt.Errorf("init premailer: %w", err)
+    }
+    html, err := p.Transform()
+    if err != nil {
+        return "", fmt.Errorf("inline css: %w", err)
+    }
+    return html, nil
+}
+```
+
+### Parsing Inbound Email
+
+Use `jhillyerd/enmime` for parsing MIME messages (attachments, HTML,
+plaintext). Loads the entire message into memory — suitable for
+typical-sized messages.
+
+```go
+import "github.com/jhillyerd/enmime"
+
+env, err := enmime.ReadEnvelope(reader)
+if err != nil {
+    return fmt.Errorf("parse email: %w", err)
+}
+from := env.GetHeader("From")
+subject := env.GetHeader("Subject")
+textBody := env.Text
+htmlBody := env.HTML
+attachments := env.Attachments
+```
+
+### Testing Email
+
+Unit tests use a spy implementation of the port interface — no
+library needed:
+
+```go
+type SpyEmailSender struct {
+    Messages []*EmailMessage
+    Err      error
+}
+
+func (s *SpyEmailSender) Send(ctx context.Context, msg *EmailMessage) error {
+    s.Messages = append(s.Messages, msg)
+    return s.Err
+}
+```
+
+For integration tests that need to verify SMTP protocol interaction,
+use `mocktools/go-smtp-mock/v2`:
+
+```go
+import smtpmock "github.com/mocktools/go-smtp-mock/v2"
+
+srv := smtpmock.New(smtpmock.ConfigurationAttr{})
+srv.Start()
+defer srv.Stop()
+
+// Point your SMTPSender at srv.PortNumber()
+// Send email, then assert:
+msgs := srv.Messages()
+```
+
+For E2E testing, use Mailpit (standalone SMTP server with web UI and
+REST API). It replaces the abandoned MailHog.
+
+### `net/smtp` (stdlib)
+
+The `net/smtp` package is **frozen** — no new features accepted. It
+lacks implicit TLS, XOAUTH2 auth, and MIME building. Use `go-mail`
+instead.
+
+---
+
 ## HTTP Server
 
 ### Server Setup

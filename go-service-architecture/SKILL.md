@@ -48,6 +48,9 @@ No `pkg/` directory — use `internal/` or flat layout.
 | PostgreSQL | `jackc/pgx/v5` |
 | Migrations | `pressly/goose/v3` |
 | Background queue | `maragu.dev/goqite` |
+| Email (SMTP) | `wneessen/go-mail` |
+| Email (parsing) | `jhillyerd/enmime` |
+| Email (CSS inlining) | `vanng822/go-premailer` |
 | MCP | `mark3labs/mcp-go` |
 | UUID | `google/uuid` |
 | CEL expressions | `google/cel-go` |
@@ -105,6 +108,7 @@ See @references/architecture-reference.md for full code examples covering:
 - MCP server integration
 - CLI and config with Cobra + koanf
 - Background queue with goqite
+- Email sending, templating, and testing
 - Graceful shutdown
 - Dockerfile and build tooling
 - Testing patterns
