@@ -49,12 +49,6 @@ function App() {
               Loading notifications...
             </p>
           </div>
-        ) : notifications.length === 0 ? (
-          <div className="flex items-center justify-center py-20">
-            <p className="text-gray-500 dark:text-gray-400">
-              No notifications yet.
-            </p>
-          </div>
         ) : (
           <>
             {/* Notifications table */}
@@ -80,14 +74,25 @@ function App() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-brand-primary">
-                  {notifications.map((n) => (
-                    <NotificationRow
-                      key={n.id}
-                      notification={n}
-                      onResend={resend}
-                      resending={resending.has(n.id)}
-                    />
-                  ))}
+                  {notifications.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="py-12 text-center text-gray-500 dark:text-gray-400"
+                      >
+                        No notifications yet
+                      </td>
+                    </tr>
+                  ) : (
+                    notifications.map((n) => (
+                      <NotificationRow
+                        key={n.id}
+                        notification={n}
+                        onResend={resend}
+                        resending={resending.has(n.id)}
+                      />
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
