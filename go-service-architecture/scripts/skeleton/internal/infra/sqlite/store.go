@@ -163,7 +163,7 @@ func (s *Store) ListNotifications(ctx context.Context, after string, limit int) 
 	if err != nil {
 		return nil, fmt.Errorf("list notifications: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var result []*domain.Notification
 	for rows.Next() {

@@ -84,7 +84,7 @@ func RunServer(ctx context.Context, bind string, port int, dsn string) error {
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Run QA seed data (no-op in non-QA builds).
 	if err := seed.RunSeed(store.DB()); err != nil {

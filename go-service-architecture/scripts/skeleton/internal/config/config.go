@@ -34,9 +34,9 @@ func Load() error {
 
 	// Load from environment — strip prefix, lowercase, replace _ with .
 	if err := K.Load(env.Provider("NOTIFIER_", ".", func(s string) string {
-		return strings.Replace(
+		return strings.ReplaceAll(
 			strings.ToLower(strings.TrimPrefix(s, "NOTIFIER_")),
-			"_", ".", -1,
+			"_", ".",
 		)
 	}), nil); err != nil {
 		return fmt.Errorf("load env config: %w", err)

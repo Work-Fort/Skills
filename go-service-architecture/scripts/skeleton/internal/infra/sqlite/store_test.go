@@ -13,7 +13,7 @@ func TestOpenInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open(\"\") error: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 }
 
 func TestPing(t *testing.T) {
@@ -21,7 +21,7 @@ func TestPing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	if err := store.Ping(context.Background()); err != nil {
 		t.Errorf("Ping() error: %v", err)
@@ -33,7 +33,7 @@ func TestCreateAndGetNotification(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 	n := &domain.Notification{
@@ -71,7 +71,7 @@ func TestCreateDuplicateReturnsAlreadyNotified(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 	n := &domain.Notification{
@@ -105,7 +105,7 @@ func TestGetNotificationNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	_, err = store.GetNotificationByEmail(context.Background(), "nobody@test.com")
 	if err == nil {
@@ -121,7 +121,7 @@ func TestUpdateNotification(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 	n := &domain.Notification{
@@ -153,7 +153,7 @@ func TestListNotifications(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 	for i, email := range []string{"a@test.com", "b@test.com", "c@test.com"} {

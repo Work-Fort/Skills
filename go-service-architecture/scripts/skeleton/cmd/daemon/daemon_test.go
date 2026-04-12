@@ -32,7 +32,7 @@ func TestDaemonHealthEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	port := ln.Addr().(*net.TCPAddr).Port
-	ln.Close()
+	_ = ln.Close()
 
 	dbPath := filepath.Join(tmp, "state", "notifier", "test.db")
 
@@ -53,7 +53,7 @@ func TestDaemonHealthEndpoint(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		resp, err := http.Get(addr + "/v1/health")
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
 				ready = true
 				break
@@ -70,7 +70,7 @@ func TestDaemonHealthEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /v1/health error: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
