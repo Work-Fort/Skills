@@ -58,6 +58,10 @@ func (s *listStubStore) ListNotifications(_ context.Context, after string, limit
 	return all[start:end], nil
 }
 
+func (s *listStubStore) CountNotifications(_ context.Context) (int, error) {
+	return len(s.notifications), nil
+}
+
 func makeNotifications(count int) []*domain.Notification {
 	var result []*domain.Notification
 	for i := 0; i < count; i++ {
@@ -199,6 +203,78 @@ func TestHandleListEmpty(t *testing.T) {
 	}
 	if resp.Meta.HasMore {
 		t.Error("has_more = true, want false")
+	}
+}
+
+func TestHandleListTotalCount(t *testing.T) {
+	notifications := makeNotifications(25)
+	store := newListStubStore(notifications...)
+	handler := HandleList(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/notifications?limit=10", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp listResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if resp.Meta.TotalCount != 25 {
+		t.Errorf("total_count = %d, want 25", resp.Meta.TotalCount)
+	}
+	if resp.Meta.TotalPages != 3 {
+		t.Errorf("total_pages = %d, want 3", resp.Meta.TotalPages)
+	}
+	if !resp.Meta.HasMore {
+		t.Error("has_more = false, want true")
+	}
+}
+
+func TestHandleListTotalCountEmpty(t *testing.T) {
+	store := newListStubStore()
+	handler := HandleList(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/notifications", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	var resp listResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if resp.Meta.TotalCount != 0 {
+		t.Errorf("total_count = %d, want 0", resp.Meta.TotalCount)
+	}
+	if resp.Meta.TotalPages != 0 {
+		t.Errorf("total_pages = %d, want 0", resp.Meta.TotalPages)
+	}
+}
+
+func TestHandleListTotalPagesRoundsUp(t *testing.T) {
+	notifications := makeNotifications(21)
+	store := newListStubStore(notifications...)
+	handler := HandleList(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/notifications?limit=20", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	var resp listResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if resp.Meta.TotalCount != 21 {
+		t.Errorf("total_count = %d, want 21", resp.Meta.TotalCount)
+	}
+	if resp.Meta.TotalPages != 2 {
+		t.Errorf("total_pages = %d, want 2", resp.Meta.TotalPages)
 	}
 }
 

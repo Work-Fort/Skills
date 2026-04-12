@@ -28,6 +28,8 @@ type listNotificationItem struct {
 type listMeta struct {
 	HasMore    bool   `json:"has_more"`
 	NextCursor string `json:"next_cursor,omitempty"`
+	TotalCount int    `json:"total_count"`
+	TotalPages int    `json:"total_pages"`
 }
 
 // listResponse is the JSON response for GET /v1/notifications.
@@ -91,8 +93,30 @@ func HandleList(store domain.NotificationStore) http.HandlerFunc {
 			})
 		}
 
+		// Query total count (outside the list transaction -- eventual
+		// consistency accepted per resolved ambiguity #1).
+		totalCount, err := store.CountNotifications(r.Context())
+		if err != nil {
+			slog.Error("count notifications failed", "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{
+				"error": "internal server error",
+			})
+			return
+		}
+
+		// Compute total pages: ceil(totalCount / limit).
+		// REQ-022: when totalCount is 0, totalPages is 0.
+		totalPages := 0
+		if totalCount > 0 {
+			totalPages = (totalCount + limit - 1) / limit
+		}
+
 		// Build pagination metadata.
-		meta := listMeta{HasMore: hasMore}
+		meta := listMeta{
+			HasMore:    hasMore,
+			TotalCount: totalCount,
+			TotalPages: totalPages,
+		}
 		if hasMore && len(notifications) > 0 {
 			lastID := notifications[len(notifications)-1].ID
 			meta.NextCursor = base64.StdEncoding.EncodeToString([]byte(lastID))
