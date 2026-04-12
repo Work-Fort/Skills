@@ -48,8 +48,11 @@ func (c *Client) WritePump(ctx context.Context) {
 // ReadPump reads from the connection to detect disconnects. Payload
 // is discarded since no client-to-server messages are expected.
 // When a read error occurs, the client is unregistered (REQ-011).
+// The read limit is set to 512 bytes to prevent memory exhaustion
+// from malicious clients sending large frames (REQ-016).
 func (c *Client) ReadPump(ctx context.Context) {
 	defer func() { c.hub.unregister <- c }()
+	c.Conn.SetReadLimit(512)
 	for {
 		if _, _, err := c.Conn.Read(ctx); err != nil {
 			return

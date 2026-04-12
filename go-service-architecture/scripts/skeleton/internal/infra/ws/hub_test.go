@@ -2,8 +2,12 @@ package ws
 
 import (
 	"context"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
 )
 
 func TestHubRegisterAndBroadcast(t *testing.T) {
@@ -135,5 +139,40 @@ func TestHubContextCancellation(t *testing.T) {
 		// Run exited as expected.
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("hub.Run did not exit after context cancellation")
+	}
+}
+
+func TestReadPumpRejectsLargeFrame(t *testing.T) {
+	hub := NewHub()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go hub.Run(ctx)
+
+	srv := httptest.NewServer(HandleWS(hub, ctx))
+	defer srv.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
+	conn, _, err := websocket.Dial(ctx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = conn.CloseNow() }()
+
+	// Send a message larger than 512 bytes.
+	largeMsg := make([]byte, 1024)
+	for i := range largeMsg {
+		largeMsg[i] = 'A'
+	}
+	err = conn.Write(ctx, websocket.MessageText, largeMsg)
+	if err != nil {
+		// Write may fail if the connection is already closing.
+		return
+	}
+
+	// The next read should fail because the server closed the
+	// connection after the oversized frame.
+	_, _, err = conn.Read(ctx)
+	if err == nil {
+		t.Fatal("expected read error after oversized frame, got nil")
 	}
 }
