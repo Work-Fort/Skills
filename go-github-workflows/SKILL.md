@@ -2,6 +2,7 @@
 name: go-github-workflows
 description: GitHub Actions workflow templates for Go services using Mise. Use when setting up CI/CD, Docker publishing, releases, pre-releases, or monorepo package tagging. Use when user says "set up CI", "create GitHub workflow", "add release pipeline", "publish Docker image", "pre-release build", or "monorepo tagging". Includes CI, GHCR Docker builds, cross-compiled binary releases, pre-release from any branch, and monorepo workflows for Go modules and npm packages.
 license: MIT
+compatibility: opencode
 metadata:
   author: Kaz Walker
   version: "1.0"

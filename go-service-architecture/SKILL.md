@@ -2,6 +2,7 @@
 name: go-service-architecture
 description: Hexagonal architecture reference for Go microservices with dual database support, REST APIs, and MCP integration. Use when scaffolding a new Go service, adding domain types, ports, adapters, HTTP handlers, database stores, or reviewing Go code for architectural violations. Use when user says "scaffold Go service", "create new microservice", "hexagonal architecture", "add REST endpoint", "set up database layer", or "MCP integration". Covers project layout, library stack, port interfaces, error handling, middleware, and testing patterns.
 license: MIT
+compatibility: opencode
 metadata:
   author: Kaz Walker
   version: "1.0"

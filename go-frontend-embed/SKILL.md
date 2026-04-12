@@ -2,6 +2,7 @@
 name: go-frontend-embed
 description: Embed frontend assets into a Go binary for single-binary deployment. Use when adding a web UI to a Go service, embedding Vite/React/SPA build output, serving static assets from Go, or setting up dev proxy to a frontend dev server. Use when user says "embed frontend", "single binary with UI", "serve React from Go", "SPA handler", or "dev proxy to Vite".
 license: MIT
+compatibility: opencode
 metadata:
   author: Kaz Walker
   version: "1.0"
