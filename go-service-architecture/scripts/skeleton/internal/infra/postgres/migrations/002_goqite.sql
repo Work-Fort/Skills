@@ -1,4 +1,7 @@
 -- +goose Up
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- +goose StatementBegin
 CREATE FUNCTION goqite_update_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -6,6 +9,7 @@ BEGIN
    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 CREATE TABLE goqite (
     id       TEXT PRIMARY KEY DEFAULT ('m_' || encode(gen_random_bytes(16), 'hex')),
