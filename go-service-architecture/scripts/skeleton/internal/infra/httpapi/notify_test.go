@@ -153,7 +153,7 @@ func TestStubStoreImplementsNotificationStore(t *testing.T) {
 }
 
 func TestStubEnqueuerImplementsEnqueuer(t *testing.T) {
-	var _ Enqueuer = &stubEnqueuer{}
+	var _ domain.Enqueuer = &stubEnqueuer{}
 }
 
 func TestHandleNotifyRequestIDPropagation(t *testing.T) {

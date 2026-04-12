@@ -1,28 +1,14 @@
 package httpapi
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"time"
 
-	"github.com/qmuntal/stateless"
-
 	"github.com/workfort/notifier/internal/domain"
 )
-
-// ResetStore defines the storage interface needed by HandleReset. It
-// combines notification CRUD, state machine accessor/mutator, and
-// transition logging -- the same shape as the worker's store but
-// consumed from the HTTP handler side.
-type ResetStore interface {
-	domain.NotificationStore
-	domain.TransitionLogger
-	NotificationStateAccessor(notificationID string) func(ctx context.Context) (stateless.State, error)
-	NotificationStateMutator(notificationID string) func(ctx context.Context, state stateless.State) error
-}
 
 // resetRequest is the JSON body for POST /v1/notify/reset.
 type resetRequest struct {
@@ -34,7 +20,7 @@ type resetRequest struct {
 // via the state machine (TriggerReset, satisfying REQ-002), clears the
 // retry count and timestamps, logs the transition, and returns 204 No
 // Content.
-func HandleReset(store ResetStore) http.HandlerFunc {
+func HandleReset(store domain.ResetStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req resetRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

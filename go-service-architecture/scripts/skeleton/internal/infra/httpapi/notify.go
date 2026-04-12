@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -10,12 +9,6 @@ import (
 	"github.com/workfort/notifier/internal/domain"
 	"github.com/workfort/notifier/internal/infra/queue"
 )
-
-// Enqueuer abstracts the job queue so the handler does not depend on
-// goqite directly. The daemon wires the real implementation.
-type Enqueuer interface {
-	Enqueue(ctx context.Context, payload []byte) error
-}
 
 // notifyRequest is the JSON body for POST /v1/notify.
 type notifyRequest struct {
@@ -30,7 +23,7 @@ type notifyResponse struct {
 // HandleNotify returns an http.HandlerFunc for POST /v1/notify.
 // It validates the email, creates a notification record, and enqueues
 // a delivery job. Email sending is asynchronous (REQ-005).
-func HandleNotify(store domain.NotificationStore, enqueuer Enqueuer) http.HandlerFunc {
+func HandleNotify(store domain.NotificationStore, enqueuer domain.Enqueuer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req notifyRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
