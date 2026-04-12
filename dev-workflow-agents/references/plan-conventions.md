@@ -166,3 +166,18 @@ If tasks depend on each other, state the dependency explicitly:
 - Each task should be completable in one sitting
 - Group related changes into a single task
 - One commit point per logical unit of work
+
+## 8. Splitting into Multiple Plans
+
+When work exceeds a single plan's scope:
+
+- **Split by capability** — what the user gets, not by layer
+- **Each sub-plan delivers testable functionality** — builds, tests
+  pass, capability is exercisable
+- **First plan is always foundation** — project skeleton, domain
+  types, database, CLI, config, health endpoint, build tasks
+- **Align sub-plans with OpenSpec specs** — one or two specs per plan
+- **Number sequentially** — Step 1, Step 2, etc. Point steps (2.1)
+  for fixes discovered during implementation
+- **Include tests in the plan that completes a capability** — don't
+  defer all testing to the end. Use Mailpit for email E2E tests.

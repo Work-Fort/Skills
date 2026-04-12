@@ -211,6 +211,43 @@ After commit with `status: pending`:
 2. If changes requested → revise, assessor reviews revisions, commit, notify TPM, loop
 3. TPM approves → update `status: approved`, commit
 
+## Splitting Large Work into Multiple Plans
+
+When work spans more than ~15 tasks or ~1500 lines, split into
+numbered sub-plans. Each sub-plan goes through the full lifecycle
+(plan → assess → implement → review).
+
+**Splitting rules:**
+
+1. **Split by capability, not by layer.** Group by what the user
+   gets, not by architectural concern. "Notification delivery" is a
+   good plan. "Add all domain types" is not — it delivers nothing
+   testable on its own.
+2. **Each sub-plan must deliver working, testable functionality.**
+   After implementing a sub-plan, the service should build, tests
+   should pass, and the new capability should be exercisable.
+3. **Earlier plans build foundations.** The first plan sets up the
+   project skeleton, domain types, database, CLI, and health
+   endpoint. Later plans add features on top.
+4. **Align with OpenSpec specs.** Each sub-plan should map to one or
+   two specs. This keeps requirements traceability straightforward.
+5. **Number plans sequentially.** Step 1, Step 2, Step 3, etc. Use
+   point steps (Step 2.1) for fixes or small additions discovered
+   during implementation.
+6. **Include E2E tests in the plan that completes a capability.**
+   Don't defer all testing to the end. Each sub-plan should include
+   tests for what it delivers, including Mailpit for email E2E tests.
+
+**Example split for a full-stack service:**
+
+| Plan | Delivers | Specs covered |
+|------|----------|---------------|
+| Step 1: Foundation | Project layout, domain, CLI, config, database, health, mise tasks | service-health |
+| Step 2: Core feature | Main endpoint, business logic, background queue | feature-delivery |
+| Step 3: State machine | State tracking, transitions, audit log | feature-state |
+| Step 4: Supporting endpoints | Reset, admin operations | feature-reset |
+| Step 5: Frontend | React SPA, embed, dev proxy | feature-dashboard |
+
 ## Anti-Patterns
 
 - Committing before feasibility review
@@ -218,3 +255,5 @@ After commit with `status: pending`:
 - Omitting deliverables from requirements
 - Plans over ~1500 lines (split into sub-steps)
 - Vague task descriptions without full code
+- Splitting by architectural layer instead of by capability
+- Sub-plans that don't deliver testable functionality on their own
