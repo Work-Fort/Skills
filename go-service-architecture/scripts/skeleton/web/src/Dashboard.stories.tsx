@@ -92,13 +92,24 @@ function DashboardLayout({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-brand-primary">
-              {notifications.map((n) => (
-                <NotificationRow
-                  key={n.id}
-                  notification={n}
-                  onResend={() => {}}
-                />
-              ))}
+              {notifications.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="py-12 text-center text-gray-500 dark:text-gray-400"
+                  >
+                    No notifications yet
+                  </td>
+                </tr>
+              ) : (
+                notifications.map((n) => (
+                  <NotificationRow
+                    key={n.id}
+                    notification={n}
+                    onResend={() => {}}
+                  />
+                ))
+              )}
             </tbody>
           </table>
         </div>
