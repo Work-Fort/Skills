@@ -177,6 +177,9 @@ func TestPostgresLogTransition(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
+	// Clean up from previous test runs.
+	_, _ = store.db.ExecContext(ctx, "DELETE FROM state_transitions WHERE entity_id = $1", "ntf_pglog-1")
+
 	if err := store.LogTransition(ctx, "notification", "ntf_pglog-1",
 		domain.StatusPending, domain.StatusSending, domain.TriggerSend); err != nil {
 		t.Fatalf("LogTransition() error: %v", err)
