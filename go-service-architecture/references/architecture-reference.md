@@ -454,6 +454,19 @@ sm.Configure(TicketReview).
 
 Guards within a state must be mutually exclusive.
 
+#### Firing Transitions
+
+Use `FireCtx` (not `Fire`) to propagate context through transitions:
+
+```go
+err := sm.FireCtx(ctx, TriggerApprove)
+```
+
+`Fire(trigger, args...)` does NOT accept a context as its first
+argument — passing one will be interpreted as the trigger value and
+cause a runtime error. Always use `FireCtx(ctx, trigger, args...)`
+when context propagation is needed (which is almost always).
+
 #### Infra Adapter (Persistence)
 
 ```go
