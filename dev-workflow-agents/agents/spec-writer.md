@@ -94,12 +94,25 @@ Every spec follows this structure:
 - Each requirement gets a unique ID within the spec (REQ-001, REQ-002, ...).
 - Requirements must be testable. If you cannot write a scenario that verifies it, rewrite it.
 - Group related requirements under descriptive headings.
+- **Be precise, not abstract.** Specify exact HTTP status codes (202, 409, 422, 404, 503), exact response body formats, exact library names, and exact configuration values. "Return a success response" is too vague — "return HTTP 202 with the notification ID in the response body" is a requirement.
+- **Include architecture constraints.** If a component must live in a specific layer (domain vs infra), or must implement a port interface, or must use a specific pattern (accessor/mutator, iota enums), state it as a SHALL requirement.
+- **Include implementation-critical details.** Library names, database pragmas, timeout values, connection pool settings, and build flags are not optional details — they affect correctness and must be specified. An implementer should not have to guess which library to use.
+- **Don't drop secondary requirements.** UX details (loading states, system preference detection), tooling requirements (Storybook format, accessibility addons), and fallback behaviors (plaintext email body) are real requirements. Include them.
 
 ### Scenario Rules
 
 - Every scenario uses Given-When-Then format.
+- Use **SHALL** in THEN clauses — scenarios are prescriptive, not descriptive.
 - Scenarios verify requirements. Every requirement should have at least one scenario.
 - Keep scenarios concrete — use specific values, not abstractions.
+- Format scenarios as bullet lists, not code blocks:
+  ```
+  #### Scenario: Duplicate notification rejected
+  - GIVEN an email address that has already been notified
+  - WHEN a POST request is sent to `/v1/notify` with that email
+  - THEN the system SHALL return HTTP 409
+  - AND the response body SHALL contain "already notified"
+  ```
 
 ## Creating a New Spec
 
@@ -287,3 +300,9 @@ After the proposal is approved, apply the delta to the spec file. The spec must 
 - Spec deltas that show code diffs instead of requirement diffs
 - Removing requirement IDs when updating (change the text, keep the ID)
 - Proposals without a spec delta (every change must show its impact on requirements)
+- **Generalizing away precision.** "Return a success response" instead of "return HTTP 202 with JSON body `{id, state}`". Vague specs produce wrong implementations.
+- **Dropping architecture constraints.** Port interfaces, domain isolation, layer placement, and structural patterns are requirements. Omitting them produces architecturally unsound code.
+- **Omitting library and tooling names.** If the project uses `qmuntal/stateless` for state machines, say so. An implementer choosing a different library will produce incompatible code.
+- **Getting state transitions wrong.** When specifying state machines, trace every path carefully. A shortcut like "pending → sending → failed" when the actual path is "pending → failed" (skipping sending) is a behavioral error that produces wrong code.
+- **Dropping secondary UX requirements.** Loading states, accessibility, system preference detection, plaintext fallbacks, and Storybook configuration are not nice-to-haves — they are requirements that affect user experience and compliance.
+- **Using descriptive language in scenarios instead of prescriptive.** THEN clauses must use SHALL. "The response is 404" is descriptive. "The system SHALL return HTTP 404" is prescriptive.

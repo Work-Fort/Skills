@@ -117,10 +117,11 @@ New scenarios follow the same pattern:
 ## Key Principles
 
 1. **Capability-oriented.** Specs map to system capabilities, not feature requests. Multiple changes may update the same spec.
-2. **SHALL for requirements.** Every requirement uses SHALL. This makes requirements testable and unambiguous.
-3. **Given-When-Then for scenarios.** Scenarios are concrete, verifiable, and serve as acceptance criteria.
-4. **Living documents.** Specs evolve as requirements change. Spec deltas track the evolution.
-5. **Minimal process.** Get to a good enough plan quickly. Perfect specs are not the goal -- shared understanding is.
+2. **SHALL for requirements.** Every requirement uses SHALL — in both requirements AND scenario THEN clauses. This makes specs prescriptive, not descriptive.
+3. **Given-When-Then for scenarios.** Scenarios are concrete, verifiable, and serve as acceptance criteria. Use specific values — exact HTTP status codes, exact response bodies, exact error messages.
+4. **Precise, not abstract.** Specify exact libraries, status codes, response formats, configuration values, and architectural constraints. Vague specs produce wrong implementations.
+5. **Living documents.** Specs evolve as requirements change. Spec deltas track the evolution.
+6. **Minimal process.** Get to a good enough plan quickly. Perfect specs are not the goal -- shared understanding is.
 6. **Git-based collaboration.** Proposals and spec deltas are part of PRs. Review specs alongside code.
 
 ## Integration with Development Workflow
