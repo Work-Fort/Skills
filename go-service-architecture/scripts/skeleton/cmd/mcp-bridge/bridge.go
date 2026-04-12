@@ -73,13 +73,14 @@ func Bridge(r io.Reader, w io.Writer, url string, token string) error {
 		}
 
 		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil {
 			slog.Error("read response", "error", err)
 			continue
 		}
 
 		// Write response to stdout, one line per response.
+		//nolint:errcheck // stdout write errors are unactionable in bridge mode
 		fmt.Fprintf(w, "%s\n", bytes.TrimSpace(body))
 	}
 

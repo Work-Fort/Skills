@@ -29,7 +29,7 @@ func NewClient(hub *Hub, conn *websocket.Conn) *Client {
 // WebSocket connection. Exits when the context is cancelled or the
 // send channel is closed (REQ-010, REQ-015).
 func (c *Client) WritePump(ctx context.Context) {
-	defer c.Conn.Close(websocket.StatusNormalClosure, "closing")
+	defer func() { _ = c.Conn.Close(websocket.StatusNormalClosure, "closing") }()
 	for {
 		select {
 		case <-ctx.Done():

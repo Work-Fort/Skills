@@ -26,7 +26,7 @@ func TestHandleWSAcceptsConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer conn.CloseNow()
+	defer func() { _ = conn.CloseNow() }()
 
 	// Broadcast a message and verify the client receives it.
 	hub.Broadcast([]byte(`{"id":"ntf_ws1","state":"sending"}`))
@@ -56,7 +56,7 @@ func TestHandleWSClientDisconnect(t *testing.T) {
 	}
 
 	// Close the connection from the client side.
-	conn.Close(websocket.StatusNormalClosure, "bye")
+	_ = conn.Close(websocket.StatusNormalClosure, "bye")
 
 	// Allow time for the read pump to detect the close and
 	// unregister the client.
@@ -82,13 +82,13 @@ func TestHandleWSMultipleClients(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial client 1: %v", err)
 	}
-	defer conn1.CloseNow()
+	defer func() { _ = conn1.CloseNow() }()
 
 	conn2, _, err := websocket.Dial(ctx, wsURL, nil)
 	if err != nil {
 		t.Fatalf("dial client 2: %v", err)
 	}
-	defer conn2.CloseNow()
+	defer func() { _ = conn2.CloseNow() }()
 
 	// Allow registration to complete.
 	time.Sleep(20 * time.Millisecond)

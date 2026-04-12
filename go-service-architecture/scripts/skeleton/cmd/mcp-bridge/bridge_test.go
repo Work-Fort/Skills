@@ -28,7 +28,7 @@ func TestBridgeForwardsRequest(t *testing.T) {
 
 		body, _ := io.ReadAll(r.Body)
 		var req map[string]any
-		json.Unmarshal(body, &req)
+		_ = json.Unmarshal(body, &req)
 
 		// Return a JSON-RPC response.
 		resp := map[string]any{
@@ -37,7 +37,7 @@ func TestBridgeForwardsRequest(t *testing.T) {
 			"result":  map[string]string{"status": "ok"},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer fakeMCP.Close()
 
@@ -72,14 +72,14 @@ func TestBridgeHandlesMultipleMessages(t *testing.T) {
 		receivedCount++
 		body, _ := io.ReadAll(r.Body)
 		var req map[string]any
-		json.Unmarshal(body, &req)
+		_ = json.Unmarshal(body, &req)
 		resp := map[string]any{
 			"jsonrpc": "2.0",
 			"id":      req["id"],
 			"result":  map[string]string{"status": "ok"},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer fakeMCP.Close()
 

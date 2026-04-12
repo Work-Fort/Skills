@@ -86,10 +86,9 @@ func HandleResetNotification(store domain.ResetStore) server.ToolHandlerFunc {
 			return gomcp.NewToolResultError("reset failed: " + err.Error()), nil
 		}
 
-		if err := store.LogTransition(ctx, "notification", n.ID,
-			prevStatus, domain.StatusPending, domain.TriggerReset); err != nil {
-			// Log failure is non-fatal.
-		}
+		//nolint:errcheck // Log failure is non-fatal; reset already succeeded.
+		_ = store.LogTransition(ctx, "notification", n.ID,
+			prevStatus, domain.StatusPending, domain.TriggerReset)
 
 		n.RetryCount = 0
 		n.UpdatedAt = time.Time{}

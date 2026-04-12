@@ -23,7 +23,7 @@ func TestNewMCPHandlerRespondsToPost(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	resp := rec.Result()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// The MCP server should respond with 200 and a JSON-RPC response.
 	if resp.StatusCode != http.StatusOK {

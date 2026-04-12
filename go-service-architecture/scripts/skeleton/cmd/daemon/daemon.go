@@ -135,6 +135,7 @@ func RunServer(ctx context.Context, cfg ServerConfig) error {
 	// after HTTP connections drain so write pumps can still dispatch
 	// messages during graceful shutdown (REQ-015).
 	hubCtx, hubCancel := context.WithCancel(context.Background())
+	defer hubCancel()
 
 	// Create WebSocket hub and start it (REQ-006: before HTTP server).
 	hub := ws.NewHub()
@@ -144,6 +145,7 @@ func RunServer(ctx context.Context, cfg ServerConfig) error {
 	// it after the hub so the runner can finish its current job before
 	// the store is closed.
 	runnerCtx, runnerCancel := context.WithCancel(context.Background())
+	defer runnerCancel()
 
 	// Create and register the email worker with broadcaster.
 	worker := queue.NewEmailWorker(store, sender, hub)
