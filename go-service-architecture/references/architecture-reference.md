@@ -925,6 +925,44 @@ func withPanicRecovery(next http.Handler) http.Handler {
 
 ---
 
+## Authentication
+
+Authentication is intentionally out of scope for this architecture
+reference. Most organizations have an existing standard — SSO, JWT,
+OAuth2, API keys, or a combination — and the choice depends on
+infrastructure, compliance requirements, and team preferences.
+
+The architecture supports any approach through the same patterns used
+for other cross-cutting concerns:
+
+- **Middleware** extracts and validates credentials (token, cookie,
+  API key) from the request. This is an infra concern.
+- **Context propagation** carries the authenticated identity from
+  middleware into handlers and services. Domain code accesses the
+  identity via context, never by inspecting headers directly.
+- **Port interfaces** define an `IdentityProvider` or `AuthProvider`
+  in the domain if services need to make authorization decisions.
+  The implementation lives in infra.
+
+```go
+// Domain port — does not know how auth works, only what it provides.
+type IdentityProvider interface {
+    Identify(ctx context.Context) (*Identity, error)
+}
+
+type Identity struct {
+    UserID string
+    Roles  []string
+}
+```
+
+The middleware, provider implementation, and token validation logic
+are left to the implementer. Common options include `lestrrat-go/jwx`
+for JWT, `coreos/go-oidc` for OpenID Connect, or a custom middleware
+calling an internal auth service.
+
+---
+
 ## MCP Integration
 
 ### Server Side
