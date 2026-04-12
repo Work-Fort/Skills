@@ -80,6 +80,30 @@ for the initial implementation but worth revisiting.
   QA build pattern and makes it impossible to accidentally enable
   simulated failures in production
 
+## QA Build: Console-Only Email, No Mailpit Required
+
+- QA builds should be fully standalone — no Mailpit, no SMTP server
+- Replace the SMTP sender with a console sender in QA builds that
+  logs the email content (to, subject, body) to slog and returns
+  success. The state machine still transitions normally.
+- Use the same `//go:build qa` / `//go:build !qa` pattern:
+  - QA: `ConsoleSender` logs to stdout, no network call
+  - Dev: real SMTP sender pointing at Mailpit for actual email testing
+  - Production: real SMTP sender pointing at production SMTP
+- This means QA testers and demos only need the single binary — no
+  external dependencies at all
+
+## QA Build: Simulated Failure Domains
+
+- Extend the QA sender with a map of domain-based simulated behaviors
+  gated by `//go:build qa`:
+  - `@example.com` — permanent failure
+  - `@fail.com` — simulated timeout
+  - `@slow.com` — extra-long delay (e.g., 30s)
+- In non-QA builds the map is nil, no matches, no runtime cost
+- This lets QA exercise all state machine paths without a real SMTP
+  server
+
 ## Missing release:qa Mise Task
 
 - There's no `release:qa` task — QA builds currently require manual
