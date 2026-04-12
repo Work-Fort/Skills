@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Type-check the frontend (tsc)"
+set -euo pipefail
+
+cd web
+npx tsc -b

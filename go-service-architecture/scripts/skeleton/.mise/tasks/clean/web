@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Remove frontend build artifacts"
+set -euo pipefail
+
+rm -rf web/dist
