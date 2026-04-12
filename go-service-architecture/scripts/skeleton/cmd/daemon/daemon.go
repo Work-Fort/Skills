@@ -8,12 +8,16 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/workfort/notifier/internal/config"
+	"github.com/workfort/notifier/internal/infra/httpapi"
+	"github.com/workfort/notifier/internal/infra/seed"
+	"github.com/workfort/notifier/internal/infra/sqlite"
 )
 
 // NewCmd creates the daemon subcommand.
@@ -50,22 +54,59 @@ func run(cmd *cobra.Command, args []string) error {
 	} else {
 		port, _ = cmd.Flags().GetInt("port")
 	}
-
-	mux := http.NewServeMux()
-
-	addr := fmt.Sprintf("%s:%d", bind, port)
-	srv := &http.Server{
-		Addr:              addr,
-		Handler:           mux,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      15 * time.Second,
-		IdleTimeout:       60 * time.Second,
-		ReadHeaderTimeout: 5 * time.Second,
+	var dsn string
+	if config.K.Exists("db") {
+		dsn = config.K.String("db")
+	} else {
+		dsn, _ = cmd.Flags().GetString("db")
 	}
 
 	// Graceful shutdown on SIGINT/SIGTERM.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	return RunServer(ctx, bind, port, dsn)
+}
+
+// RunServer starts the HTTP server with the given configuration and
+// blocks until the context is cancelled or a fatal error occurs.
+// Exported so tests can call it with a cancellable context instead of
+// relying on process-wide signal delivery.
+func RunServer(ctx context.Context, bind string, port int, dsn string) error {
+	// If DSN is still empty (no config/env/flag override), use SQLite
+	// in the XDG state directory.
+	if dsn == "" {
+		dsn = filepath.Join(config.StatePath(), "notifier.db")
+	}
+
+	// Open the store.
+	store, err := sqlite.Open(dsn)
+	if err != nil {
+		return fmt.Errorf("open store: %w", err)
+	}
+	defer store.Close()
+
+	// Run QA seed data (no-op in non-QA builds).
+	if err := seed.RunSeed(store.DB()); err != nil {
+		return fmt.Errorf("run seed: %w", err)
+	}
+
+	// Build the HTTP mux.
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/health", httpapi.HandleHealth(store))
+
+	// Apply middleware stack.
+	handler := httpapi.WithMiddleware(mux)
+
+	addr := fmt.Sprintf("%s:%d", bind, port)
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 
 	errCh := make(chan error, 1)
 	go func() {
