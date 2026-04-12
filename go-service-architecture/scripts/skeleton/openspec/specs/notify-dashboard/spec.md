@@ -85,3 +85,35 @@ The notification dashboard is a React + TypeScript frontend built with Vite and 
 - GIVEN the service is running with default brand configuration
 - WHEN a user views the dashboard AND an email is sent
 - THEN the dashboard color palette SHALL match the colors used in the email template
+
+## Storybook & Component Development
+
+### Requirements
+
+- REQ-17: The project SHALL include a Storybook setup using `@storybook/react-vite` that shares the existing Vite configuration.
+- REQ-18: The following reusable components SHALL be developed and documented in Storybook: Button, Pagination, DarkModeToggle, StatusBadge, and NotificationRow.
+- REQ-19: Each Storybook story SHALL use CSF 3.0 format with controls (argTypes) and `tags: ['autodocs']` for automatic documentation generation.
+- REQ-20: Storybook SHALL include the `@storybook/addon-a11y` accessibility addon, and all component stories SHALL pass automated accessibility checks.
+- REQ-21: Dark mode switching SHALL use Tailwind's `dark:` class strategy by toggling the `dark` class on the `<html>` element.
+- REQ-22: Storybook preview SHALL include a theme decorator that allows switching between light and dark themes within the Storybook UI.
+- REQ-23: The assembled dashboard page SHALL have its own Storybook story showing the full view with mocked notification data.
+
+### Scenarios
+
+#### Scenario: Viewing a component in Storybook
+- GIVEN Storybook is running via `mise run dev:storybook`
+- WHEN a developer navigates to the Button story in the sidebar
+- THEN Storybook SHALL render the Button component with interactive controls
+- AND the autodocs tab SHALL display generated documentation with prop types and defaults
+
+#### Scenario: Switching dark/light mode in Storybook
+- GIVEN a developer is viewing any component story in Storybook
+- WHEN the developer toggles the theme decorator from light to dark
+- THEN the `<html>` element inside the story iframe SHALL have the `dark` class added
+- AND the component SHALL re-render using Tailwind `dark:` variant styles
+
+#### Scenario: Accessibility check in Storybook
+- GIVEN a developer is viewing the StatusBadge story in Storybook
+- WHEN the accessibility addon panel is open
+- THEN the addon SHALL run automated axe-core checks against the rendered component
+- AND the panel SHALL report zero violations for color contrast, ARIA attributes, and keyboard navigation

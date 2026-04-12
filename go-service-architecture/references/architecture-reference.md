@@ -908,6 +908,158 @@ token on every request.
 
 ---
 
+## WebSocket
+
+Real-time push to connected clients using
+[coder/websocket](https://github.com/coder/websocket) (ISC license,
+zero external deps). Import: `github.com/coder/websocket`.
+
+### Hub Pattern
+
+A hub manages connected clients and broadcasts messages. Standard
+pattern for real-time dashboards.
+
+```go
+type Hub struct {
+    clients    map[*Client]struct{}
+    broadcast  chan []byte
+    register   chan *Client
+    unregister chan *Client
+    mu         sync.Mutex
+}
+
+type Client struct {
+    hub  *Hub
+    conn *websocket.Conn
+    send chan []byte
+}
+
+func NewHub() *Hub {
+    return &Hub{
+        clients:    make(map[*Client]struct{}),
+        broadcast:  make(chan []byte, 256),
+        register:   make(chan *Client),
+        unregister: make(chan *Client),
+    }
+}
+
+func (h *Hub) Run(ctx context.Context) {
+    for {
+        select {
+        case <-ctx.Done():
+            return
+        case c := <-h.register:
+            h.mu.Lock()
+            h.clients[c] = struct{}{}
+            h.mu.Unlock()
+        case c := <-h.unregister:
+            h.mu.Lock()
+            if _, ok := h.clients[c]; ok {
+                delete(h.clients, c)
+                close(c.send)
+            }
+            h.mu.Unlock()
+        case msg := <-h.broadcast:
+            h.mu.Lock()
+            for c := range h.clients {
+                select {
+                case c.send <- msg:
+                default:
+                    delete(h.clients, c)
+                    close(c.send)
+                }
+            }
+            h.mu.Unlock()
+        }
+    }
+}
+```
+
+### Client Read/Write Pumps
+
+```go
+func (c *Client) writePump(ctx context.Context) {
+    defer c.conn.Close(websocket.StatusNormalClosure, "closing")
+    for {
+        select {
+        case <-ctx.Done():
+            return
+        case msg, ok := <-c.send:
+            if !ok {
+                return
+            }
+            if err := c.conn.Write(ctx, websocket.MessageText, msg); err != nil {
+                return
+            }
+        }
+    }
+}
+
+func (c *Client) readPump(ctx context.Context) {
+    defer func() { c.hub.unregister <- c }()
+    for {
+        // Read detects disconnects; discard payload if no client messages expected.
+        if _, _, err := c.conn.Read(ctx); err != nil {
+            return
+        }
+    }
+}
+```
+
+### HTTP Upgrade Handler
+
+```go
+func handleWS(hub *Hub) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        conn, err := websocket.Accept(w, r, nil)
+        if err != nil {
+            return // Accept writes the HTTP error
+        }
+        client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
+        hub.register <- client
+
+        ctx := r.Context()
+        go client.writePump(ctx)
+        client.readPump(ctx) // blocks until disconnect
+    }
+}
+```
+
+### Integration
+
+Mount on the server mux alongside REST routes:
+
+```go
+mux.HandleFunc("/v1/ws", handleWS(hub))
+```
+
+Start the hub in the daemon's `RunE` before the HTTP server:
+
+```go
+hub := NewHub()
+go hub.Run(ctx)
+```
+
+Broadcast state changes from the service/store layer:
+
+```go
+func (s *Service) UpdateStatus(ctx context.Context, id string, status Status) error {
+    if err := s.store.UpdateStatus(ctx, id, status); err != nil {
+        return err
+    }
+    msg, _ := json.Marshal(map[string]string{"id": id, "status": string(status)})
+    s.hub.Broadcast(msg)
+    return nil
+}
+
+// Broadcast is a convenience method on Hub.
+func (h *Hub) Broadcast(msg []byte) {
+    h.broadcast <- msg
+}
+```
+
+---
+
 ## Health Endpoint
 
 ```go
