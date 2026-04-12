@@ -112,7 +112,7 @@ for the initial implementation but worth revisiting.
   `release:production`
 - The architecture docs should mention all three release tasks
 
-## #10 — Security: MCP Error Information Leakage (HIGH)
+## #10 — Security: MCP Error Information Leakage (HIGH) ✅
 
 - MCP tool handlers in `internal/infra/mcp/tools.go` expose raw
   `err.Error()` to clients (e.g., `"internal error: " + err.Error()`)
@@ -130,7 +130,7 @@ for the initial implementation but worth revisiting.
 - Fix: pass `&websocket.AcceptOptions{OriginPatterns: [...]}` with
   allowed origins
 
-## #12 — Security: WebSocket Read Size Limit (HIGH)
+## #12 — Security: WebSocket Read Size Limit (HIGH) ✅
 
 - `ReadPump` calls `conn.Read(ctx)` without `conn.SetReadLimit()`
 - A malicious client can send arbitrarily large frames to exhaust
@@ -138,7 +138,7 @@ for the initial implementation but worth revisiting.
 - Since the server discards all incoming messages, set a small limit
   (e.g., 512 bytes)
 
-## #13 — Security: Request Body Size Limits (MEDIUM)
+## #13 — Security: Request Body Size Limits (MEDIUM) ✅
 
 - POST endpoints (`/v1/notify`, `/v1/notify/reset`) do not use
   `http.MaxBytesReader` — a client can send a multi-gigabyte body
@@ -146,7 +146,7 @@ for the initial implementation but worth revisiting.
 - Fix: add `r.Body = http.MaxBytesReader(w, r.Body, 1<<20)` (1 MB)
   at the top of each POST handler
 
-## #14 — Security: WebSocket Connection Limit (MEDIUM)
+## #14 — Security: WebSocket Connection Limit (MEDIUM) ✅
 
 - The hub accepts unlimited client registrations — a single attacker
   can open thousands of connections to exhaust file descriptors
