@@ -1,4 +1,4 @@
-# Notification Service — Skeleton App Overview
+# Notifier — Skeleton App Overview
 
 A minimal but fully-featured Go microservice that demonstrates every
 layer of the architecture stack through a simple notification workflow.
@@ -35,10 +35,12 @@ any terminal → pending         (manual reset via /v1/notify/reset)
 - **delivered** — email accepted by SMTP server
 - **failed** — permanent failure, will not retry (e.g., `@example.com`)
 - **not_sent** — transient failure, goqite auto-retries via visibility
-  timeout. Each attempt increments a retry count on the notification
+  timeout. Each retry increments a retry count on the notification
   record. After reaching the configured retry limit (default 3), the
-  notification transitions to `failed` permanently. The retry count
-  and limit are visible in the dashboard and API responses.
+  notification transitions to `failed` permanently. The initial attempt
+  is not counted as a retry, so retry limit 3 means 1 initial + 3
+  retries = 4 total delivery attempts. The retry count and limit are
+  visible in the dashboard and API responses.
 
 ### Business Rules
 
