@@ -30,6 +30,15 @@ POST /v1/notify { email }
 - A reset endpoint clears the notification record, allowing the
   address to be notified again.
 
+### Branding and Design
+
+- The React frontend uses Tailwind CSS with light and dark mode support.
+- Email templates share the same brand colors and styling as the
+  dashboard, demonstrating how to maintain consistent branding across
+  web UI and transactional email. The email templates extract the
+  brand palette from a shared config and apply it via go-premailer
+  CSS inlining.
+
 ## Architecture Stack Coverage
 
 Every feature in this app maps to a real-world concern that production
@@ -49,6 +58,8 @@ in a real system.
 | Reset endpoint | State machine reset | Administrative actions — retry failed operations, re-process records, clear locks |
 | Audit log | Transition history table | Compliance — audit trails, change tracking, incident forensics |
 | React dashboard | Embedded SPA | Admin panels — monitoring dashboards, back-office tools, internal consoles |
+| Tailwind + dark mode | CSS framework with theme switching | Design systems — consistent UI across light/dark themes, accessibility, user preference |
+| Shared brand styling | Same palette in frontend and email | Brand consistency — matching colors and typography across web, email, and print |
 | SPA embed + build tags | go:embed with conditional compilation | Single-binary deployment — CLI tools with web UIs, edge services, appliance software |
 | Dev proxy | Reverse proxy to Vite | Development experience — hot reload, fast iteration without rebuilding Go binary |
 | Health endpoint | GET /v1/health | Load balancer checks — Kubernetes readiness probes, uptime monitoring, circuit breakers |
