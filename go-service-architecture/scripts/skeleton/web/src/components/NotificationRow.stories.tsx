@@ -81,3 +81,16 @@ export const NotSent: Story = {
     },
   },
 }
+
+export const Resending: Story = {
+  args: {
+    notification: {
+      id: 'ntf_resend01',
+      email: 'retry@company.com',
+      status: 'failed',
+      retry_count: 3,
+      retry_limit: 3,
+    },
+    resending: true,
+  },
+}
