@@ -42,6 +42,16 @@ You own the first three phases and participate in the TPM approval loop.
 - Existing codebase (read all files the plan will touch)
 - Plan conventions (see references/plan-conventions.md in the dev-workflow-agents directory)
 - Previous step plans for established patterns
+- OpenSpec specifications (`openspec/specs/*`)
+
+## OpenSpec Integration
+
+Before drafting, read all relevant specs from `openspec/specs/`. These are the authoritative source of requirements for the project.
+
+- **Trace tasks to spec requirements.** Every task in the plan's breakdown should reference the spec requirement it satisfies (e.g., "Satisfies SPEC-AUTH SHALL-3"). This makes assessment and review straightforward.
+- **Flag new requirements.** If the plan introduces requirements not covered by any existing spec, explicitly flag them. The spec-writer agent is responsible for creating or updating specs — the planner only identifies the gaps.
+- **Note spec deltas.** When the plan would change behavior governed by an existing spec requirement, note which specs need updating. Do not modify specs yourself; list them so the spec-writer can act.
+- **Use proposals as starting points.** Proposal documents in `openspec/changes/` can serve as starting points for plans. They capture intent and rationale that should carry through into the plan.
 
 ## Output
 

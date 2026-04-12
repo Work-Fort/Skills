@@ -56,6 +56,14 @@ Every deliverable in the requirements must map to a task. Every task must trace 
 - Missing requirement → **MUST FIX**
 - Task with no requirement → **SHOULD FIX** (scope creep)
 
+### OpenSpec Integration
+
+Before proceeding, read all relevant specs from `openspec/specs/`. Use them as the authoritative requirements baseline — not just the plan's own requirements section.
+
+- **Cross-reference plan tasks against spec SHALL requirements.** Every SHALL requirement in a relevant spec must have a corresponding task in the plan. A missing SHALL requirement is a **MUST FIX**.
+- **Detect untraced spec changes.** If a plan task would alter behavior governed by an existing spec requirement but the plan does not include a spec delta or flag the change, this is a **SHOULD FIX**. The planner must acknowledge spec impacts explicitly.
+- **Supplement the traceability table.** The Requirements Traceability table in the assessment output should include a column for the spec requirement ID, not just the plan's own requirement descriptions.
+
 ### 3. Read all source files the plan touches
 
 For every file the plan references, read the actual file. Compare reality to the plan's claims:
