@@ -1,16 +1,11 @@
 package main
 
-import (
-	"fmt"
-	"os"
-)
+import "github.com/workfort/notifier/internal/cli"
 
 // Version is set at build time via -ldflags.
 var Version = "dev"
 
 func main() {
-	// Cobra CLI will replace this in Step 2. For now, confirm the
-	// binary builds and prints its version.
-	fmt.Println("notifier", Version)
-	os.Exit(0)
+	cli.Version = Version
+	cli.Execute()
 }
