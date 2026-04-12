@@ -113,6 +113,15 @@ for the initial implementation but worth revisiting.
   `release:production`
 - The architecture docs should mention all three release tasks
 
+## Dashboard Table Border Styling
+
+- Extra horizontal rule at the bottom of the table beneath the
+  rounded border — looks like a double border
+- The bottom border appears thicker than the sides
+- Fix: check for a stray `<hr>`, extra `border-bottom` on the last
+  row, or a table `border-collapse` issue conflicting with
+  `rounded` corners
+
 ## Empty State UX
 
 - The empty dashboard just shows a blank table with headers — no
