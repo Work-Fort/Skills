@@ -51,6 +51,8 @@ func TestDaemonHealthEndpoint(t *testing.T) {
 			SMTPHost: "127.0.0.1",
 			SMTPPort: 1025,
 			SMTPFrom: "test@localhost",
+			Dev:      true,
+			DevURL:   "http://localhost:5173",
 		})
 	}()
 

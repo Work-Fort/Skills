@@ -5,6 +5,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -171,6 +172,28 @@ func RunServer(ctx context.Context, cfg ServerConfig) error {
 	// Create the MCP handler.
 	mcpHandler := mcpinfra.NewMCPHandler(store, nq, cfg.Version)
 
+	// Select SPA handler: dev proxy or embedded filesystem.
+	var spaHandler http.Handler
+	if cfg.Dev {
+		spaHandler = httpapi.NewSPADevProxy(cfg.DevURL)
+		slog.Info("dev mode: proxying to Vite", "url", cfg.DevURL)
+	} else {
+		// Spec delta: REQ-006 says fs.Sub(webFS, "dist") but the embed
+		// lives at the project root, so the path is "web/dist".
+		distFS, err := fs.Sub(cfg.FrontendFS, "web/dist")
+		if err != nil {
+			return fmt.Errorf("embedded SPA: %w", err)
+		}
+
+		// Warn if the embedded FS is empty (built without -tags spa).
+		if _, readErr := fs.Stat(distFS, "index.html"); readErr != nil {
+			slog.Warn("no embedded frontend found; built without -tags spa?",
+				"hint", "use --dev to proxy to Vite, or rebuild with -tags spa")
+		}
+
+		spaHandler = httpapi.NewSPAHandler(distFS)
+	}
+
 	// Build the HTTP mux.
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/health", httpapi.HandleHealth(store))
@@ -179,6 +202,9 @@ func RunServer(ctx context.Context, cfg ServerConfig) error {
 	mux.HandleFunc("GET /v1/notifications", httpapi.HandleList(store))
 	mux.HandleFunc("GET /v1/ws", ws.HandleWS(hub, hubCtx))
 	mux.Handle("/mcp/", http.StripPrefix("/mcp", mcpHandler))
+
+	// SPA catch-all — must be last so API routes take priority.
+	mux.Handle("/", spaHandler)
 
 	// Apply middleware stack.
 	handler := httpapi.WithMiddleware(mux)
