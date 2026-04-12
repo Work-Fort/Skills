@@ -9,6 +9,7 @@ require (
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/v2 v2.3.4
 	github.com/pressly/goose/v3 v3.27.0
+	github.com/qmuntal/stateless v1.8.0
 	github.com/spf13/cobra v1.10.2
 	github.com/wneessen/go-mail v0.7.2
 	maragu.dev/goqite v0.4.0
