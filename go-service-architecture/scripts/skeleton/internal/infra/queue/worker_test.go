@@ -4,7 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
+
+	"github.com/qmuntal/stateless"
+
+	infraemail "github.com/workfort/notifier/internal/infra/email"
 
 	"github.com/workfort/notifier/internal/domain"
 )
@@ -20,9 +25,20 @@ func (s *spyEmailSender) Send(_ context.Context, msg *domain.EmailMessage) error
 	return s.err
 }
 
-// spyStore captures notification updates.
+// spyStore satisfies WorkerStore using in-memory maps. The accessor
+// and mutator read/write the notification's Status field in the map,
+// mimicking the database-backed versions in the real store.
 type spyStore struct {
 	notifications map[string]*domain.Notification
+	transitions   []transitionRecord
+}
+
+type transitionRecord struct {
+	entityType string
+	entityID   string
+	from       domain.Status
+	to         domain.Status
+	trigger    domain.Trigger
 }
 
 func newSpyStore() *spyStore {
@@ -50,6 +66,38 @@ func (s *spyStore) UpdateNotification(_ context.Context, n *domain.Notification)
 
 func (s *spyStore) ListNotifications(_ context.Context, _ string, _ int) ([]*domain.Notification, error) {
 	return nil, nil
+}
+
+func (s *spyStore) LogTransition(_ context.Context, entityType, entityID string, from, to domain.Status, trigger domain.Trigger) error {
+	s.transitions = append(s.transitions, transitionRecord{
+		entityType: entityType,
+		entityID:   entityID,
+		from:       from,
+		to:         to,
+		trigger:    trigger,
+	})
+	return nil
+}
+
+func (s *spyStore) NotificationStateAccessor(notificationID string) func(ctx context.Context) (stateless.State, error) {
+	return func(_ context.Context) (stateless.State, error) {
+		n, ok := s.notifications[notificationID]
+		if !ok {
+			return nil, domain.ErrNotFound
+		}
+		return n.Status, nil
+	}
+}
+
+func (s *spyStore) NotificationStateMutator(notificationID string) func(ctx context.Context, state stateless.State) error {
+	return func(_ context.Context, state stateless.State) error {
+		n, ok := s.notifications[notificationID]
+		if !ok {
+			return domain.ErrNotFound
+		}
+		n.Status = state.(domain.Status)
+		return nil
+	}
 }
 
 func TestEmailWorkerSuccess(t *testing.T) {
@@ -87,6 +135,19 @@ func TestEmailWorkerSuccess(t *testing.T) {
 	if n.Status != domain.StatusDelivered {
 		t.Errorf("status = %v, want %v", n.Status, domain.StatusDelivered)
 	}
+
+	// Verify audit log: pending->sending, sending->delivered.
+	if len(store.transitions) != 2 {
+		t.Fatalf("transitions = %d, want 2", len(store.transitions))
+	}
+	if store.transitions[0].from != domain.StatusPending || store.transitions[0].to != domain.StatusSending {
+		t.Errorf("transition[0] = %v->%v, want pending->sending",
+			store.transitions[0].from, store.transitions[0].to)
+	}
+	if store.transitions[1].from != domain.StatusSending || store.transitions[1].to != domain.StatusDelivered {
+		t.Errorf("transition[1] = %v->%v, want sending->delivered",
+			store.transitions[1].from, store.transitions[1].to)
+	}
 }
 
 func TestEmailWorkerSendFailure(t *testing.T) {
@@ -121,6 +182,11 @@ func TestEmailWorkerSendFailure(t *testing.T) {
 	if n.RetryCount != 1 {
 		t.Errorf("retry_count = %d, want 1", n.RetryCount)
 	}
+
+	// Verify audit log: pending->sending, sending->not_sent.
+	if len(store.transitions) != 2 {
+		t.Fatalf("transitions = %d, want 2", len(store.transitions))
+	}
 }
 
 func TestEmailWorkerRetryLimitExceeded(t *testing.T) {
@@ -141,8 +207,10 @@ func TestEmailWorkerRetryLimitExceeded(t *testing.T) {
 		RequestID:      "req_ghi",
 	})
 
-	// REQ-013a: when retry_count >= retry_limit, transition to failed
-	// and return nil to acknowledge the message.
+	// When retry_count >= retry_limit, the worker fires TriggerRetry
+	// (not_sent -> sending), attempts send, send fails, then the
+	// soft_fail guard rejects TriggerSoftFail, so it fires
+	// TriggerFailed (sending -> failed) and acks.
 	err := worker.Handle(context.Background(), payload)
 	if err != nil {
 		t.Fatalf("expected nil (ack) when retry limit exceeded, got: %v", err)
@@ -151,5 +219,57 @@ func TestEmailWorkerRetryLimitExceeded(t *testing.T) {
 	n := store.notifications["ntf_789"]
 	if n.Status != domain.StatusFailed {
 		t.Errorf("status = %v, want %v", n.Status, domain.StatusFailed)
+	}
+
+	// Verify audit log: not_sent->sending, sending->failed.
+	if len(store.transitions) != 2 {
+		t.Fatalf("transitions = %d, want 2", len(store.transitions))
+	}
+	if store.transitions[1].to != domain.StatusFailed {
+		t.Errorf("transition[1].to = %v, want failed", store.transitions[1].to)
+	}
+}
+
+func TestEmailWorkerExampleComAutoFail(t *testing.T) {
+	store := newSpyStore()
+	store.notifications["ntf_ex1"] = &domain.Notification{
+		ID:         "ntf_ex1",
+		Email:      "test@example.com",
+		Status:     domain.StatusPending,
+		RetryCount: 0,
+		RetryLimit: 3,
+	}
+	// Sender returns ErrExampleDomain for @example.com addresses.
+	sender := &spyEmailSender{err: fmt.Errorf("send to test@example.com: %w", infraemail.ErrExampleDomain)}
+	worker := NewEmailWorker(store, sender)
+
+	payload, _ := json.Marshal(EmailJobPayload{
+		NotificationID: "ntf_ex1",
+		Email:          "test@example.com",
+		RequestID:      "req_ex1",
+	})
+
+	err := worker.Handle(context.Background(), payload)
+	if err != nil {
+		t.Fatalf("Handle() error: %v", err)
+	}
+
+	// @example.com path: pending -> sending -> failed (not not_sent).
+	n := store.notifications["ntf_ex1"]
+	if n.Status != domain.StatusFailed {
+		t.Errorf("status = %v, want %v", n.Status, domain.StatusFailed)
+	}
+
+	// Verify audit log: pending->sending, sending->failed.
+	if len(store.transitions) != 2 {
+		t.Fatalf("transitions = %d, want 2", len(store.transitions))
+	}
+	if store.transitions[0].from != domain.StatusPending || store.transitions[0].to != domain.StatusSending {
+		t.Errorf("transition[0] = %v->%v, want pending->sending",
+			store.transitions[0].from, store.transitions[0].to)
+	}
+	if store.transitions[1].from != domain.StatusSending || store.transitions[1].to != domain.StatusFailed {
+		t.Errorf("transition[1] = %v->%v, want sending->failed",
+			store.transitions[1].from, store.transitions[1].to)
 	}
 }
