@@ -18,6 +18,14 @@ interface UseNotificationsResult {
   goNext: () => void
   /** Load the previous page. */
   goPrevious: () => void
+  /** Navigate to a specific page (1-indexed). Only pages in the cursor stack are reachable. */
+  goToPage: (page: number) => void
+  /** Current page number (1-indexed). */
+  currentPage: number
+  /** Total number of pages. */
+  totalPages: number
+  /** Total number of notifications across all pages. */
+  totalCount: number
   /** Reset a notification to pending so the queue worker re-enqueues it. */
   resend: (id: string) => Promise<void>
   /** Set of notification IDs currently being resent (for loading spinners). */
@@ -40,6 +48,8 @@ export function useNotifications(): UseNotificationsResult {
   const [pageIndex, setPageIndex] = useState(0)
   const [nextCursor, setNextCursor] = useState<string | undefined>()
   const [hasMore, setHasMore] = useState(false)
+  const [totalPages, setTotalPages] = useState(0)
+  const [totalCount, setTotalCount] = useState(0)
 
   // Keep a ref to the current notifications for the WS callback.
   const notificationsRef = useRef(notifications)
@@ -61,6 +71,8 @@ export function useNotifications(): UseNotificationsResult {
       setNotifications(items)
       setHasMore(data.meta.has_more)
       setNextCursor(data.meta.next_cursor)
+      setTotalPages(data.meta.total_pages)
+      setTotalCount(data.meta.total_count)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load')
     } finally {
@@ -102,6 +114,22 @@ export function useNotifications(): UseNotificationsResult {
     fetchPage(cursorStack[newIndex])
   }, [pageIndex, cursorStack, fetchPage])
 
+  const goToPage = useCallback(
+    (page: number) => {
+      if (page < 1 || page > totalPages) return
+      // Pages are 1-indexed; cursor stack is 0-indexed.
+      const targetIndex = page - 1
+      if (targetIndex === pageIndex) return
+      if (targetIndex < cursorStack.length) {
+        setPageIndex(targetIndex)
+        fetchPage(cursorStack[targetIndex])
+      }
+      // Pages beyond the cursor stack are not directly reachable
+      // (positional context only -- resolved ambiguity #2).
+    },
+    [totalPages, pageIndex, cursorStack, fetchPage],
+  )
+
   const resend = useCallback(
     async (id: string) => {
       const notification = notificationsRef.current.find((n) => n.id === id)
@@ -136,6 +164,10 @@ export function useNotifications(): UseNotificationsResult {
     hasPrevious: pageIndex > 0,
     goNext,
     goPrevious,
+    goToPage,
+    currentPage: pageIndex + 1,
+    totalPages,
+    totalCount,
     resend,
     resending,
   }

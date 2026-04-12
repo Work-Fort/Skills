@@ -9,6 +9,53 @@ export interface PaginationProps {
   hasPrevious: boolean
   /** Disable the "Next" button (e.g., on the last page). */
   hasNext: boolean
+  /** Current page number (1-indexed). */
+  currentPage: number
+  /** Total number of pages. */
+  totalPages: number
+  /** Called when the user clicks a numbered page button. */
+  onPageChange: (page: number) => void
+}
+
+/**
+ * Compute visible page numbers with ellipsis placeholders.
+ * Returns an array of page numbers and null for ellipsis gaps.
+ * Ellipsis logic applies when totalPages >= 7.
+ */
+function getPageNumbers(
+  currentPage: number,
+  totalPages: number,
+): (number | null)[] {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1)
+  }
+
+  const pages: (number | null)[] = []
+
+  // Always show first page.
+  pages.push(1)
+
+  // Left ellipsis: if current page is far enough from the start.
+  if (currentPage > 3) {
+    pages.push(null)
+  }
+
+  // Pages around the current page.
+  const start = Math.max(2, currentPage - 1)
+  const end = Math.min(totalPages - 1, currentPage + 1)
+  for (let i = start; i <= end; i++) {
+    pages.push(i)
+  }
+
+  // Right ellipsis: if current page is far enough from the end.
+  if (currentPage < totalPages - 2) {
+    pages.push(null)
+  }
+
+  // Always show last page.
+  pages.push(totalPages)
+
+  return pages
 }
 
 export function Pagination({
@@ -16,7 +63,17 @@ export function Pagination({
   onNext,
   hasPrevious,
   hasNext,
+  currentPage,
+  totalPages,
+  onPageChange,
 }: PaginationProps) {
+  // REQ-058: Hide pagination entirely when 0 or 1 pages.
+  if (totalPages <= 1) {
+    return null
+  }
+
+  const pageNumbers = getPageNumbers(currentPage, totalPages)
+
   return (
     <nav
       className="flex items-center justify-between border-t border-gray-200 px-4 py-3 dark:border-gray-700"
@@ -29,6 +86,35 @@ export function Pagination({
       >
         Previous
       </Button>
+
+      <div className="flex items-center gap-1">
+        {pageNumbers.map((page, index) =>
+          page === null ? (
+            <span
+              key={`ellipsis-${index}`}
+              className="px-2 text-gray-400 dark:text-gray-500"
+              aria-hidden="true"
+            >
+              ...
+            </span>
+          ) : (
+            <Button
+              key={page}
+              variant={page === currentPage ? 'primary' : 'secondary'}
+              onClick={() => onPageChange(page)}
+              aria-current={page === currentPage ? 'page' : undefined}
+              aria-label={`Page ${page}`}
+            >
+              {page}
+            </Button>
+          ),
+        )}
+      </div>
+
+      <div className="text-sm text-gray-500 dark:text-gray-400">
+        Page {currentPage} of {totalPages}
+      </div>
+
       <Button
         variant="secondary"
         onClick={onNext}

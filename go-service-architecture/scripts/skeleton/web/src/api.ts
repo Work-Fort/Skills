@@ -15,6 +15,8 @@ export interface ListNotification {
 export interface ListMeta {
   has_more: boolean
   next_cursor?: string
+  total_count: number
+  total_pages: number
 }
 
 export interface ListResponse {
