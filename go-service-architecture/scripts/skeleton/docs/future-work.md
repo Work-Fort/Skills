@@ -188,7 +188,7 @@ for the initial implementation but worth revisiting.
   `os.Exit(1)` swallows all startup errors — user sees no output
 - Need to print the error to stderr before exiting
 
-## #19 — QA Build Should Use In-Memory SQLite
+## #19 — QA Build Should Use In-Memory SQLite ✅
 
 - QA builds should be fully ephemeral — no on-disk database
 - Use SQLite in-memory mode (empty DSN `""`) so data is fresh on
@@ -206,3 +206,15 @@ for the initial implementation but worth revisiting.
   has a different width, or a scrollbar appearing/disappearing
 - Fix: set a fixed `min-width` on the Actions column or the Resend
   button to prevent layout reflow
+
+## #21 — Graceful Shutdown Race with In-Flight Jobs
+
+- During shutdown, the store closes before the job runner finishes
+  draining in-flight jobs, causing `sql: database is closed` errors
+- The shutdown sequence is: HTTP server → MCP → hub → runner → DB
+  close, but the runner's in-flight jobs (which include a 6-second
+  send delay) outlast the shutdown timeout
+- Fix: the runner context cancellation should wait for in-flight
+  jobs to complete (or timeout) before the store is closed. Either
+  increase the shutdown timeout or add a `runner.Wait()` call
+  between cancelling the runner and closing the store
