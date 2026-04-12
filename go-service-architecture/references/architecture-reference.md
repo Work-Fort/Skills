@@ -641,40 +641,72 @@ r.Register("send_email", func(ctx context.Context, payload []byte) error {
 
 Failed sends are automatically retried by goqite's visibility timeout.
 
-### Email Templating
+### Email Templating with Maizzle
 
-Use `html/template` with embedded templates and `go-premailer` for CSS
-inlining (required for email client compatibility):
+Use Maizzle (MIT, npm) to build email templates with the same Tailwind
+utility classes as the frontend. Maizzle compiles Tailwind CSS into
+inlined static HTML at build time — no runtime CSS processing needed.
 
-```go
-import (
-    "html/template"
-    "embed"
-    premailer "github.com/vanng822/go-premailer/premailer"
-)
+#### Shared Brand Colors
 
-//go:embed templates/*.html
-var templateFS embed.FS
+A single `brand.json` at the project root is the source of truth for
+brand colors. Both the frontend Tailwind config and the Maizzle email
+Tailwind config import it:
 
-var emailTemplates = template.Must(template.ParseFS(templateFS, "templates/*.html"))
-
-func RenderEmail(name string, data any) (string, error) {
-    var buf bytes.Buffer
-    if err := emailTemplates.ExecuteTemplate(&buf, name, data); err != nil {
-        return "", fmt.Errorf("render template %s: %w", name, err)
-    }
-    // Inline CSS for email client compatibility
-    p, err := premailer.NewPremailerFromString(buf.String(), nil)
-    if err != nil {
-        return "", fmt.Errorf("init premailer: %w", err)
-    }
-    html, err := p.Transform()
-    if err != nil {
-        return "", fmt.Errorf("inline css: %w", err)
-    }
-    return html, nil
+```json
+{
+  "primary": "#1a1a2e",
+  "accent": "#e94560",
+  "surface": "#16213e",
+  "text": "#eaeaea"
 }
 ```
+
+#### Email Template Structure
+
+```
+email/
+  templates/
+    notification.html    -- Maizzle template using Tailwind classes
+  layouts/
+    main.html            -- shared layout (header, footer, branding)
+  tailwind.config.ts     -- imports brand.json, email-safe config
+  config.js              -- Maizzle build config
+  dist/                  -- compiled output (gitignored)
+```
+
+#### Build Integration
+
+Maizzle builds email templates as a mise task. The compiled HTML output
+is embedded into the Go binary via `//go:embed`:
+
+```
+email/dist/*.html → go:embed → Go binary
+```
+
+At runtime, Go loads the pre-built HTML and injects dynamic values
+(recipient, notification ID, request ID) via `html/template`:
+
+```go
+//go:embed email/dist/*.html
+var emailFS embed.FS
+
+var emailTemplates = template.Must(template.ParseFS(emailFS, "email/dist/*.html"))
+
+func RenderNotification(data NotificationData) (string, string, error) {
+    var htmlBuf, textBuf bytes.Buffer
+    if err := emailTemplates.ExecuteTemplate(&htmlBuf, "notification.html", data); err != nil {
+        return "", "", fmt.Errorf("render html: %w", err)
+    }
+    if err := emailTemplates.ExecuteTemplate(&textBuf, "notification.txt", data); err != nil {
+        return "", "", fmt.Errorf("render text: %w", err)
+    }
+    return htmlBuf.String(), textBuf.String(), nil
+}
+```
+
+CSS is already inlined by Maizzle at build time — no go-premailer
+needed at runtime. The Go side only handles dynamic value injection.
 
 ### Parsing Inbound Email
 

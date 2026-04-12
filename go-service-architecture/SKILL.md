@@ -52,7 +52,7 @@ No `pkg/` directory — use `internal/` or flat layout.
 | WebSocket | `coder/websocket` | ISC |
 | Email (SMTP) | `wneessen/go-mail` | MIT |
 | Email (parsing) | `jhillyerd/enmime` | MIT |
-| Email (CSS inlining) | `vanng822/go-premailer` | MIT |
+| Email (templates) | `maizzle` (npm, build-time) | MIT |
 | MCP | `mark3labs/mcp-go` | MIT |
 | UUID | `google/uuid` | BSD-3-Clause |
 | CEL expressions | `google/cel-go` | Apache-2.0 |

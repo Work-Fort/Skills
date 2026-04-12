@@ -82,9 +82,9 @@
 
 ## Brand Color Sharing Mechanism -- RESOLVED
 
-**Source says:** "The email templates extract the brand palette from a shared config and apply it via go-premailer CSS inlining." And "Email templates share the same brand colors and styling as the dashboard."
+**Source says:** "The email templates extract the brand palette from a shared config and apply it via Maizzle build-time CSS inlining." And "Email templates share the same brand colors and styling as the dashboard."
 **Ambiguity:** What is the exact mechanism for sharing colors between the Go email renderer and the React frontend? Is it a shared JSON file, a Go template variable, CSS custom properties, or a Tailwind config export?
-**Decision made:** Shared `brand.json` file at the project root. Tailwind config imports it for custom color tokens. Go reads it via `go:embed` and passes values to `html/template`; go-premailer inlines the concrete color values. Updated in notification-delivery spec (REQ-021) and frontend-dashboard spec (REQ-024).
+**Decision made:** Shared `brand.json` file at the project root. Tailwind config imports it for dashboard color tokens. Maizzle build imports it to resolve brand colors into inlined CSS at compile time. At runtime, Go only injects dynamic values into pre-compiled email HTML via `html/template` — no runtime CSS processing. Updated in notification-delivery spec (REQ-020, REQ-021) and frontend-dashboard spec (REQ-024).
 **Alternative interpretation:** Could be Go constants exported to a generated TypeScript file. Could be CSS custom properties duplicated in both.
 **Impact if wrong:** If the mechanism is not shared, brand colors will drift between email and dashboard. Manual duplication is error-prone.
 

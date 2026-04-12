@@ -43,8 +43,8 @@ Accepts notification requests via a REST endpoint, validates input, enforces one
 ### Email Templates
 
 - REQ-019: Email templates SHALL use `html/template` from the Go standard library with embedded template files via `//go:embed`.
-- REQ-020: CSS in email templates SHALL be inlined using `vanng822/go-premailer` for email client compatibility.
-- REQ-021: Email templates SHALL extract brand colors from a shared `brand.json` file at the project root. The Go binary SHALL read `brand.json` via `go:embed` and pass the color values to `html/template`. go-premailer SHALL inline the concrete color values into the HTML email. This ensures consistency between the dashboard and transactional emails.
+- REQ-020: Email templates SHALL be compiled at build time using Maizzle (MIT, npm), which processes Tailwind CSS and inlines all styles into static HTML. No runtime CSS processing SHALL occur in the Go service.
+- REQ-021: Email templates SHALL share brand colors with the dashboard via a `brand.json` file at the project root. The Maizzle build SHALL import `brand.json` to resolve brand color tokens into inlined CSS during compilation. At runtime, the Go service SHALL only inject dynamic values (e.g., recipient name, notification ID) into the pre-compiled HTML via `html/template`. This ensures consistency between the dashboard and transactional emails without runtime CSS processing.
 - REQ-022: Every email SHALL include both an HTML body and a plaintext body (via `AddAlternativeString` with `gomail.TypeTextPlain`).
 
 ### Request ID in Email
@@ -97,7 +97,7 @@ Accepts notification requests via a REST endpoint, validates input, enforces one
 
 - **Given** a notification is being sent to `user@company.com`
 - **When** the email is composed
-- **Then** the email SHALL contain an HTML body rendered via `html/template` with inlined CSS
+- **Then** the email SHALL contain an HTML body rendered from a Maizzle-compiled template with pre-inlined CSS, with dynamic values injected via `html/template`
 - **And** the email SHALL contain a plaintext alternative body
 
 ### Scenario: Request ID propagated to email

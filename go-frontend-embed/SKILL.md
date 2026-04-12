@@ -299,6 +299,28 @@ export default defineConfig({
 The default Vite config hashes asset filenames under `dist/assets/`,
 which aligns with the cache headers in the SPA handler above.
 
+## Email Templates with Maizzle
+
+When the service sends transactional email, use Maizzle (MIT, npm) to
+build email templates with the same Tailwind classes as the frontend.
+Maizzle compiles Tailwind utilities into inlined static HTML at build
+time — email clients get concrete inline styles, no CSS processing
+at runtime.
+
+Share brand colors via a `brand.json` file at the project root. Both
+the frontend `tailwind.config.ts` and the email `tailwind.config.ts`
+import it, keeping styles in sync automatically.
+
+```
+brand.json (single source of truth)
+  ├── web/tailwind.config.ts → React dashboard
+  └── email/tailwind.config.ts → Maizzle → compiled HTML
+                                              └── go:embed into binary
+```
+
+The compiled Maizzle output is embedded via `//go:embed`. At runtime,
+Go only injects dynamic values (recipient, IDs) via `html/template`.
+
 ## Storybook Integration
 
 Storybook runs alongside the frontend for isolated component development.

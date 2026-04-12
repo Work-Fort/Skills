@@ -49,7 +49,7 @@ Provides a React SPA dashboard embedded in the Go binary for monitoring notifica
 
 ### Shared Branding
 
-- REQ-024: The dashboard and email templates SHALL share the same brand color palette via a shared `brand.json` file at the project root. The Tailwind config SHALL import `brand.json` to define custom color tokens. The Go email renderer SHALL read `brand.json` via `go:embed` and pass the values to `html/template`; go-premailer inlines the concrete color values into email HTML.
+- REQ-024: The dashboard and email templates SHALL share the same brand color palette via a shared `brand.json` file at the project root. The Tailwind config SHALL import `brand.json` to define custom color tokens. The Maizzle email build SHALL also import `brand.json` to resolve brand colors into inlined CSS at compile time. At runtime, the Go service only injects dynamic values into pre-compiled email HTML via `html/template` — no runtime CSS processing occurs.
 
 ## Scenarios
 
