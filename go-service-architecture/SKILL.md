@@ -55,10 +55,11 @@ No `pkg/` directory — use `internal/` or flat layout.
 | MCP | `mark3labs/mcp-go` | MIT |
 | UUID | `google/uuid` | BSD-3-Clause |
 | CEL expressions | `google/cel-go` | Apache-2.0 |
-| Linter | `golangci-lint` | MIT |
+| Linter | `golangci-lint` | GPL-3.0 (dev tool only) |
 | Build tooling | `mise` | MIT |
 
-All permissively licensed — no GPL/LGPL/AGPL.
+All runtime dependencies are permissively licensed — no GPL/LGPL/AGPL.
+`golangci-lint` is GPL-3.0 but is a dev-only tool not linked into binaries.
 
 ## Architectural Rules
 
