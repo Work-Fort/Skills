@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pressly/goose/v3"
+	"github.com/qmuntal/stateless"
 	_ "modernc.org/sqlite"
 
 	"github.com/workfort/notifier/internal/domain"
@@ -179,6 +180,54 @@ func (s *Store) ListNotifications(ctx context.Context, after string, limit int) 
 		result = append(result, n)
 	}
 	return result, rows.Err()
+}
+
+// NotificationStateAccessor returns an accessor function for the
+// stateless state machine. It reads the current status of a
+// notification by ID from the database (REQ-015).
+func (s *Store) NotificationStateAccessor(notificationID string) func(ctx context.Context) (stateless.State, error) {
+	return func(ctx context.Context) (stateless.State, error) {
+		var state int
+		err := s.db.QueryRowContext(ctx,
+			"SELECT status FROM notifications WHERE id = ?", notificationID,
+		).Scan(&state)
+		if err != nil {
+			return nil, fmt.Errorf("read notification state: %w", err)
+		}
+		return domain.Status(state), nil
+	}
+}
+
+// NotificationStateMutator returns a mutator function for the
+// stateless state machine. It writes the new status to the database
+// and updates the updated_at timestamp (REQ-015).
+func (s *Store) NotificationStateMutator(notificationID string) func(ctx context.Context, state stateless.State) error {
+	return func(ctx context.Context, state stateless.State) error {
+		now := time.Now().UTC()
+		_, err := s.db.ExecContext(ctx,
+			"UPDATE notifications SET status = ?, updated_at = ? WHERE id = ?",
+			int(state.(domain.Status)), now.Format(time.RFC3339), notificationID,
+		)
+		if err != nil {
+			return fmt.Errorf("write notification state: %w", err)
+		}
+		return nil
+	}
+}
+
+// LogTransition records a state transition in the audit log table
+// (REQ-022, REQ-023). Stores human-readable string values.
+func (s *Store) LogTransition(ctx context.Context, entityType, entityID string, from, to domain.Status, trigger domain.Trigger) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO state_transitions (entity_type, entity_id, from_state, to_state, trigger, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		entityType, entityID, from.String(), to.String(), trigger.String(),
+		time.Now().UTC().Format(time.RFC3339),
+	)
+	if err != nil {
+		return fmt.Errorf("log transition: %w", err)
+	}
+	return nil
 }
 
 // isUniqueViolation checks if a SQLite error is a UNIQUE constraint

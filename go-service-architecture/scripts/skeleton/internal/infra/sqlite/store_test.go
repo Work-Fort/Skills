@@ -187,6 +187,132 @@ func TestListNotifications(t *testing.T) {
 	}
 }
 
+func TestNotificationStateAccessor(t *testing.T) {
+	store, err := Open("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+
+	ctx := context.Background()
+	n := &domain.Notification{
+		ID:         "ntf_acc-1",
+		Email:      "accessor@test.com",
+		Status:     domain.StatusSending,
+		RetryLimit: domain.DefaultRetryLimit,
+	}
+	if err := store.CreateNotification(ctx, n); err != nil {
+		t.Fatal(err)
+	}
+
+	accessor := store.NotificationStateAccessor("ntf_acc-1")
+	state, err := accessor(ctx)
+	if err != nil {
+		t.Fatalf("accessor() error: %v", err)
+	}
+	if state.(domain.Status) != domain.StatusSending {
+		t.Errorf("state = %v, want StatusSending", state)
+	}
+}
+
+func TestNotificationStateMutator(t *testing.T) {
+	store, err := Open("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+
+	ctx := context.Background()
+	n := &domain.Notification{
+		ID:         "ntf_mut-1",
+		Email:      "mutator@test.com",
+		Status:     domain.StatusPending,
+		RetryLimit: domain.DefaultRetryLimit,
+	}
+	if err := store.CreateNotification(ctx, n); err != nil {
+		t.Fatal(err)
+	}
+
+	mutator := store.NotificationStateMutator("ntf_mut-1")
+	if err := mutator(ctx, domain.StatusSending); err != nil {
+		t.Fatalf("mutator() error: %v", err)
+	}
+
+	got, err := store.GetNotificationByEmail(ctx, "mutator@test.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != domain.StatusSending {
+		t.Errorf("status = %v, want StatusSending", got.Status)
+	}
+}
+
+func TestLogTransition(t *testing.T) {
+	store, err := Open("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+
+	ctx := context.Background()
+	if err := store.LogTransition(ctx, "notification", "ntf_log-1",
+		domain.StatusPending, domain.StatusSending, domain.TriggerSend); err != nil {
+		t.Fatalf("LogTransition() error: %v", err)
+	}
+
+	// Verify the row was inserted.
+	var count int
+	err = store.db.QueryRowContext(ctx,
+		"SELECT count(*) FROM state_transitions WHERE entity_id = ?",
+		"ntf_log-1",
+	).Scan(&count)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Errorf("transition count = %d, want 1", count)
+	}
+}
+
+func TestLogTransitionMultipleEntries(t *testing.T) {
+	store, err := Open("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+
+	ctx := context.Background()
+	transitions := []struct {
+		from    domain.Status
+		to      domain.Status
+		trigger domain.Trigger
+	}{
+		{domain.StatusPending, domain.StatusSending, domain.TriggerSend},
+		{domain.StatusSending, domain.StatusNotSent, domain.TriggerSoftFail},
+		{domain.StatusNotSent, domain.StatusSending, domain.TriggerRetry},
+		{domain.StatusSending, domain.StatusDelivered, domain.TriggerDelivered},
+	}
+
+	for _, tr := range transitions {
+		if err := store.LogTransition(ctx, "notification", "ntf_log-2",
+			tr.from, tr.to, tr.trigger); err != nil {
+			t.Fatalf("LogTransition(%v -> %v): %v", tr.from, tr.to, err)
+		}
+	}
+
+	var count int
+	err = store.db.QueryRowContext(ctx,
+		"SELECT count(*) FROM state_transitions WHERE entity_id = ?",
+		"ntf_log-2",
+	).Scan(&count)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 4 {
+		t.Errorf("transition count = %d, want 4", count)
+	}
+}
+
 // isDomainErr is a test helper using errors.Is.
 func isDomainErr(err, target error) bool {
 	return err != nil && errors.Is(err, target)
