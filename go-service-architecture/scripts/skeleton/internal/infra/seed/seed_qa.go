@@ -23,22 +23,26 @@ func SeedSQL() []byte {
 }
 
 // seedJobs defines the goqite jobs to enqueue for seed notifications.
-// Each entry corresponds to a notification row inserted by seed.sql.
+// Only pending and not_sent notifications need delivery jobs -- terminal
+// states (delivered, failed) do not get jobs.
 var seedJobs = []struct {
 	NotificationID string `json:"notification_id"`
 	Email          string `json:"email"`
 	RequestID      string `json:"request_id"`
 }{
+	// Step 3: pending notifications.
 	{"ntf_seed-001", "alice@company.com", "req_seed-001"},
 	{"ntf_seed-002", "bob@company.com", "req_seed-002"},
 	{"ntf_seed-003", "charlie@example.com", "req_seed-003"},
+	// Step 4: not_sent notification (will auto-retry).
+	{"ntf_seed-006", "retry@company.com", "req_seed-006"},
 }
 
 // RunSeed executes the embedded seed SQL and enqueues delivery jobs
 // programmatically via jobs.Create(). Called on startup when built
 // with -tags qa.
 func RunSeed(db *sql.DB) error {
-	// Insert notification rows via SQL.
+	// Insert notification rows and audit log entries via SQL.
 	if _, err := db.Exec(string(seedSQL)); err != nil {
 		return fmt.Errorf("run seed sql: %w", err)
 	}

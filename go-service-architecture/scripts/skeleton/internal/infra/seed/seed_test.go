@@ -34,6 +34,15 @@ func TestRunSeedExecutes(t *testing.T) {
 		created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
 		updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 	);
+	CREATE TABLE IF NOT EXISTS state_transitions (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		entity_type TEXT NOT NULL,
+		entity_id   TEXT NOT NULL,
+		from_state  TEXT NOT NULL,
+		to_state    TEXT NOT NULL,
+		trigger     TEXT NOT NULL,
+		created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+	);
 	create table goqite (
 		id text primary key default ('m_' || lower(hex(randomblob(16)))),
 		created text not null default (strftime('%Y-%m-%dT%H:%M:%fZ')),
@@ -57,15 +66,15 @@ func TestRunSeedExecutes(t *testing.T) {
 	if err := db.QueryRow("SELECT count(*) FROM notifications").Scan(&count); err != nil {
 		t.Fatalf("count notifications: %v", err)
 	}
-	if count != 3 {
-		t.Errorf("notification count = %d, want 3", count)
+	if count != 6 {
+		t.Errorf("notification count = %d, want 6", count)
 	}
 
 	// Verify queue jobs were enqueued.
 	if err := db.QueryRow("SELECT count(*) FROM goqite").Scan(&count); err != nil {
 		t.Fatalf("count goqite: %v", err)
 	}
-	if count != 3 {
-		t.Errorf("goqite message count = %d, want 3", count)
+	if count != 4 {
+		t.Errorf("goqite message count = %d, want 4", count)
 	}
 }
