@@ -44,13 +44,25 @@ func TestDaemonHealthEndpoint(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- RunServer(ctx, "127.0.0.1", port, dbPath)
+		errCh <- RunServer(ctx, ServerConfig{
+			Bind:     "127.0.0.1",
+			Port:     port,
+			DSN:      dbPath,
+			SMTPHost: "127.0.0.1",
+			SMTPPort: 1025,
+			SMTPFrom: "test@localhost",
+		})
 	}()
 
 	// Wait for server to be ready.
 	addr := fmt.Sprintf("http://127.0.0.1:%d", port)
 	ready := false
 	for i := 0; i < 50; i++ {
+		select {
+		case err := <-errCh:
+			t.Fatalf("RunServer returned early with error: %v", err)
+		default:
+		}
 		resp, err := http.Get(addr + "/v1/health")
 		if err == nil {
 			_ = resp.Body.Close()

@@ -10,9 +10,11 @@ create table goqite (
   priority integer not null default 0
 ) strict;
 
+-- +goose StatementBegin
 create trigger goqite_updated_timestamp after update on goqite begin
   update goqite set updated = strftime('%Y-%m-%dT%H:%M:%fZ') where id = old.id;
 end;
+-- +goose StatementEnd
 
 create index goqite_queue_priority_created_idx on goqite (queue, priority desc, created);
 

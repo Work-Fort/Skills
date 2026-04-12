@@ -15,7 +15,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/workfort/notifier/internal/config"
+	"github.com/workfort/notifier/internal/infra/email"
 	"github.com/workfort/notifier/internal/infra/httpapi"
+	"github.com/workfort/notifier/internal/infra/queue"
 	"github.com/workfort/notifier/internal/infra/seed"
 	"github.com/workfort/notifier/internal/infra/sqlite"
 )
@@ -30,6 +32,9 @@ func NewCmd() *cobra.Command {
 	cmd.Flags().String("bind", "127.0.0.1", "Bind address")
 	cmd.Flags().Int("port", 8080, "Listen port")
 	cmd.Flags().String("db", "", "Database DSN (empty = SQLite in XDG state dir)")
+	cmd.Flags().String("smtp-host", "127.0.0.1", "SMTP server host")
+	cmd.Flags().Int("smtp-port", 1025, "SMTP server port")
+	cmd.Flags().String("smtp-from", "notifier@localhost", "Email sender address")
 	return cmd
 }
 
@@ -37,50 +42,49 @@ func run(cmd *cobra.Command, args []string) error {
 	// Initialise structured JSON logging.
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
-	// Resolve flags: koanf (file/env) takes precedence if the key
-	// exists; otherwise fall back to the CLI flag default. Using
-	// K.Exists() instead of checking for zero values ensures that
-	// intentional zero/empty values (e.g., port 0 for random port,
-	// empty bind for all interfaces) are honoured.
-	var bind string
-	if config.K.Exists("bind") {
-		bind = config.K.String("bind")
-	} else {
-		bind, _ = cmd.Flags().GetString("bind")
-	}
-	var port int
-	if config.K.Exists("port") {
-		port = config.K.Int("port")
-	} else {
-		port, _ = cmd.Flags().GetInt("port")
-	}
-	var dsn string
-	if config.K.Exists("db") {
-		dsn = config.K.String("db")
-	} else {
-		dsn, _ = cmd.Flags().GetString("db")
-	}
+	// Resolve flags: koanf (file/env) takes precedence.
+	bind := resolveString(cmd, "bind")
+	port := resolveInt(cmd, "port")
+	dsn := resolveString(cmd, "db")
+	smtpHost := resolveString(cmd, "smtp-host")
+	smtpPort := resolveInt(cmd, "smtp-port")
+	smtpFrom := resolveString(cmd, "smtp-from")
 
 	// Graceful shutdown on SIGINT/SIGTERM.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	return RunServer(ctx, bind, port, dsn)
+	return RunServer(ctx, ServerConfig{
+		Bind:     bind,
+		Port:     port,
+		DSN:      dsn,
+		SMTPHost: smtpHost,
+		SMTPPort: smtpPort,
+		SMTPFrom: smtpFrom,
+	})
+}
+
+// ServerConfig holds configuration for RunServer.
+type ServerConfig struct {
+	Bind     string
+	Port     int
+	DSN      string
+	SMTPHost string
+	SMTPPort int
+	SMTPFrom string
 }
 
 // RunServer starts the HTTP server with the given configuration and
 // blocks until the context is cancelled or a fatal error occurs.
-// Exported so tests can call it with a cancellable context instead of
-// relying on process-wide signal delivery.
-func RunServer(ctx context.Context, bind string, port int, dsn string) error {
-	// If DSN is still empty (no config/env/flag override), use SQLite
-	// in the XDG state directory.
-	if dsn == "" {
-		dsn = filepath.Join(config.StatePath(), "notifier.db")
+// Exported so tests can call it with a cancellable context.
+func RunServer(ctx context.Context, cfg ServerConfig) error {
+	// Default DSN to XDG state directory.
+	if cfg.DSN == "" {
+		cfg.DSN = filepath.Join(config.StatePath(), "notifier.db")
 	}
 
 	// Open the store.
-	store, err := sqlite.Open(dsn)
+	store, err := sqlite.Open(cfg.DSN)
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
@@ -91,14 +95,35 @@ func RunServer(ctx context.Context, bind string, port int, dsn string) error {
 		return fmt.Errorf("run seed: %w", err)
 	}
 
+	// Set up goqite queue and job runner.
+	nq, err := queue.NewNotificationQueue(store.DB())
+	if err != nil {
+		return fmt.Errorf("create notification queue: %w", err)
+	}
+
+	// Set up SMTP sender.
+	sender, err := email.NewSMTPSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPFrom)
+	if err != nil {
+		return fmt.Errorf("create smtp sender: %w", err)
+	}
+
+	// Create and register the email worker.
+	worker := queue.NewEmailWorker(store, sender)
+	runner := queue.NewJobRunner(nq.Queue())
+	runner.Register("send_notification", worker.Handle)
+
+	// Start the job runner in a goroutine.
+	go runner.Start(ctx)
+
 	// Build the HTTP mux.
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/health", httpapi.HandleHealth(store))
+	mux.HandleFunc("POST /v1/notify", httpapi.HandleNotify(store, nq))
 
 	// Apply middleware stack.
 	handler := httpapi.WithMiddleware(mux)
 
-	addr := fmt.Sprintf("%s:%d", bind, port)
+	addr := fmt.Sprintf("%s:%d", cfg.Bind, cfg.Port)
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           handler,
@@ -126,4 +151,24 @@ func RunServer(ctx context.Context, bind string, port int, dsn string) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
+}
+
+// resolveString reads from koanf if the key exists, otherwise from
+// the cobra flag.
+func resolveString(cmd *cobra.Command, key string) string {
+	if config.K.Exists(key) {
+		return config.K.String(key)
+	}
+	v, _ := cmd.Flags().GetString(key)
+	return v
+}
+
+// resolveInt reads from koanf if the key exists, otherwise from
+// the cobra flag.
+func resolveInt(cmd *cobra.Command, key string) int {
+	if config.K.Exists(key) {
+		return config.K.Int(key)
+	}
+	v, _ := cmd.Flags().GetInt(key)
+	return v
 }
