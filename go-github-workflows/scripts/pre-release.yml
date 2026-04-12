@@ -118,17 +118,36 @@ jobs:
           cat *.sha256 > SHA256SUMS
           rm *.sha256
 
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        uses: Work-Fort/github-tag-action@v6.3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          release_branches: ${{ inputs.branch }}
+          tag_prefix: v
+          dry_run: true
+
       - name: Create release notes
         env:
           TAG: ${{ needs.prepare.outputs.tag }}
           BRANCH: ${{ inputs.branch }}
           ACTOR: ${{ github.actor }}
+          CHANGELOG: ${{ steps.changelog.outputs.changelog }}
         run: |
           cat > release-notes.md << EOF
           > Pre-release build from \`${BRANCH}\` triggered by @${ACTOR}
 
           **Tag:** \`${TAG}\`
           **Branch:** \`${BRANCH}\`
+
+          ## What's Changed
+
+          ${CHANGELOG}
           EOF
 
       - name: Create GitHub Pre-release
