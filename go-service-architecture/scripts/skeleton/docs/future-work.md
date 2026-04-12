@@ -64,6 +64,15 @@ for the initial implementation but worth revisiting.
 - Storybook story should show variants with many pages, single page,
   and current-page highlighting
 
+## Missing release:qa Mise Task
+
+- There's no `release:qa` task — QA builds currently require manual
+  `go build -tags spa,qa` which bypasses mise
+- Add `.mise/tasks/release/qa` that builds with `-tags spa,qa` and
+  includes the seed data, matching the pattern of `release:dev` and
+  `release:production`
+- The architecture docs should mention all three release tasks
+
 ## Empty State UX
 
 - The empty dashboard just shows a blank table with headers — no
