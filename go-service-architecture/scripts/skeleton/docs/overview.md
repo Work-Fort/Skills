@@ -190,17 +190,18 @@ Dockerfile
 
 ## Implementation Plan Sequence
 
-The app is built in five sequential plans, each delivering working,
+The app is built in seven sequential plans, each delivering working,
 testable functionality:
 
-| Step | Plan | Delivers |
-|------|------|----------|
-| 1 | Foundation | Project layout, domain types, error sentinels, CLI, config, SQLite store, health endpoint, structured logging, request ID middleware, QA build tag + seed infrastructure, mise tasks, Dockerfile |
-| 2 | Notification delivery | Notify endpoint, input validation, email templates with brand styling, goqite queue, SMTP adapter, 6-second delay, QA seed for pending/sending states, Mailpit E2E tests |
-| 3 | State machine | Stateless integration, state transitions, retry count/limit, not_sent soft-fail, audit log, @example.com auto-fail, QA seed for delivered/failed/not_sent states |
-| 4 | Reset and list | Reset endpoint, paginated notifications list, PostgreSQL store |
-| 5 | MCP and WebSocket | MCP tools (1:1 with REST), MCP bridge, WebSocket endpoint for live updates |
-| 6 | Frontend | React SPA, Tailwind + dark mode, Vite setup, embed, dev proxy, dashboard with WebSocket, resend button |
+| Step | Plan | Est. tasks | Delivers |
+|------|------|-----------|----------|
+| 1 | Project skeleton | ~10 | Project layout, go.mod, domain types, error sentinels, mise tasks, Dockerfile, QA build tag + seed infrastructure |
+| 2 | CLI and database | ~12 | Cobra CLI, koanf config, XDG paths, SQLite store, Goose migrations, health endpoint, structured logging, request ID middleware |
+| 3 | Notification delivery | ~14 | Notify endpoint, input validation, email templates with brand styling, goqite queue, SMTP adapter, 6-second delay, QA seed, Mailpit E2E tests |
+| 4 | State machine | ~12 | Stateless integration, state transitions, retry count/limit, not_sent soft-fail, audit log, @example.com auto-fail, QA seed for all states |
+| 5 | Reset, list, and PostgreSQL | ~10 | Reset endpoint, paginated notifications list, PostgreSQL store + migrations |
+| 6 | MCP and WebSocket | ~10 | MCP tools (1:1 with REST), MCP bridge, WebSocket endpoint for live updates |
+| 7 | Frontend | ~14 | React SPA, Tailwind + dark mode, Vite setup, embed, dev proxy, dashboard with WebSocket, resend button |
 
 The QA build tag (`//go:build qa`) and seed infrastructure are
 established in Step 1. Each subsequent step adds seed data for the
