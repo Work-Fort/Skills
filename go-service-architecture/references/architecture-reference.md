@@ -12,6 +12,10 @@ writing or reviewing Go service code.
 `internal/domain/types.go` — entity structs, enums, and constants. No
 external imports beyond stdlib.
 
+Note: `type Status string` is for simple status fields on non-state-machine
+entities. For state machine states, use `type Status int` with iota enums
+(see the State Machines section below).
+
 ```go
 package domain
 
