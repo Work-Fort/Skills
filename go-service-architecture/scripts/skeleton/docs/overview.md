@@ -209,3 +209,8 @@ The QA build tag (`//go:build qa`) and seed infrastructure are
 established in Step 1. Each subsequent step adds seed data for the
 states it introduces, so the QA build always reflects the full
 feature set completed so far.
+
+After each step's code review passes, a **skill review checkpoint**
+runs before the next step begins. This reviews all skills, agents,
+and architecture docs for accuracy against what was actually built.
+See [skill-review-checkpoint.md](skill-review-checkpoint.md).

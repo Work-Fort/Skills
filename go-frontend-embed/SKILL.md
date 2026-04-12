@@ -299,6 +299,94 @@ export default defineConfig({
 The default Vite config hashes asset filenames under `dist/assets/`,
 which aligns with the cache headers in the SPA handler above.
 
+## Storybook Integration
+
+Storybook runs alongside the frontend for isolated component development.
+It shares the Vite config so aliases, plugins, and Tailwind all work
+automatically.
+
+**Install** (from the `web/` directory):
+
+```bash
+cd web
+npx storybook@latest init
+```
+
+This scaffolds `.storybook/` config using `@storybook/react-vite`.
+
+**Story format** -- CSF 3.0 with autodocs:
+
+```tsx
+// web/src/components/Button.stories.tsx
+import type { Meta, StoryObj } from '@storybook/react'
+import { Button } from './Button'
+
+const meta = {
+  component: Button,
+  tags: ['autodocs'],
+  argTypes: {
+    variant: { control: 'select', options: ['primary', 'secondary'] },
+    disabled: { control: 'boolean' },
+  },
+} satisfies Meta<typeof Button>
+
+export default meta
+type Story = StoryObj<typeof meta>
+
+export const Primary: Story = {
+  args: { variant: 'primary', children: 'Click me' },
+}
+```
+
+**Dark mode decorator** -- toggles Tailwind's `dark` class on `<html>`:
+
+```tsx
+// web/.storybook/preview.tsx
+import type { Preview } from '@storybook/react'
+import '../src/index.css'
+
+const preview: Preview = {
+  globalTypes: {
+    theme: {
+      description: 'Toggle light/dark mode',
+      toolbar: {
+        title: 'Theme',
+        items: ['light', 'dark'],
+        dynamicTitle: true,
+      },
+    },
+  },
+  decorators: [
+    (Story, context) => {
+      const theme = context.globals.theme ?? 'light'
+      document.documentElement.classList.toggle('dark', theme === 'dark')
+      return <Story />
+    },
+  ],
+}
+
+export default preview
+```
+
+**Accessibility addon** -- install `@storybook/addon-a11y` and add it to
+`.storybook/main.ts` `addons` array. The panel runs axe-core checks on
+every story automatically.
+
+**Mise task** -- Storybook runs independently of the Go server:
+
+```
+.mise/tasks/dev/storybook    -- mise run dev:storybook
+```
+
+```bash
+#!/usr/bin/env bash
+#MISE description="Start Storybook dev server"
+set -euo pipefail
+
+cd web
+npx storybook dev -p 6006
+```
+
 ## Anti-Patterns
 
 - **Embedding `node_modules/` or source files.** Only embed the build
