@@ -1,1 +1,12 @@
 @import "tailwindcss";
+
+/* Dark mode: class strategy (add/remove "dark" on <html>) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Brand colors — must match brand.json at project root */
+@theme {
+  --color-brand-primary: #1a1a2e;
+  --color-brand-accent: #e94560;
+  --color-brand-surface: #16213e;
+  --color-brand-text: #eaeaea;
+}
