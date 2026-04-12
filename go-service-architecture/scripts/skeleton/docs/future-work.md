@@ -103,7 +103,7 @@ for the initial implementation but worth revisiting.
 - This lets QA exercise all state machine paths without a real SMTP
   server
 
-## #9 — Missing release:qa Mise Task
+## #9 — Missing release:qa Mise Task ✅
 
 - There's no `release:qa` task — QA builds currently require manual
   `go build -tags spa,qa` which bypasses mise
