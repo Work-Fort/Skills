@@ -99,8 +99,28 @@ in a real system.
 | Port interfaces | Domain ports + infra adapters | Testability and flexibility — swap implementations without changing business logic |
 | E2E tests | Test harness + Mailpit | Integration verification — testing the real binary with real HTTP and real SMTP |
 | Mise tasks | Namespaced .mise/tasks/ | Build automation — reproducible builds, CI/CD task definitions, developer onboarding |
+| Build variants (dev/qa/prod) | Build tags + embedded seed data | Environment-specific builds — demo modes, QA fixtures, feature flags, debug tooling |
 | Dockerfile | Multi-stage distroless build | Container deployment — minimal attack surface, reproducible production images |
 | OpenSpec specs | Capability-organized specs | Requirements management — living documentation, spec-driven development, change tracking |
+
+## Build Types
+
+Three build variants controlled by build tags:
+
+| Build | Tag | SPA | Seed Data | Use case |
+|-------|-----|-----|-----------|----------|
+| **dev** | (none) | No (proxy to Vite) | No | Local development with hot reload |
+| **qa** | `-tags spa,qa` | Yes (embedded) | Yes (embedded SQL) | Demo and QA — dashboard has activity from first boot |
+| **production** | `-tags spa` | Yes (embedded) | No | Production deployment |
+
+The QA build embeds a SQL seed script that populates the database with
+notifications in various states — delivered, failed, not_sent with
+retries remaining. The `not_sent` records trigger automatic retries
+when the service starts, creating visible activity on the dashboard
+immediately. This demonstrates the full lifecycle without manual setup.
+
+The seed data is compiled in via `//go:build qa` so it cannot
+accidentally run in production.
 
 ## Interfaces
 
