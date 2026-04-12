@@ -63,7 +63,7 @@ in a real system.
 | SPA embed + build tags | go:embed with conditional compilation | Single-binary deployment — CLI tools with web UIs, edge services, appliance software |
 | Dev proxy | Reverse proxy to Vite | Development experience — hot reload, fast iteration without rebuilding Go binary |
 | Health endpoint | GET /v1/health | Load balancer checks — Kubernetes readiness probes, uptime monitoring, circuit breakers |
-| MCP tools | mcp-go | AI agent integration — exposing service capabilities to LLMs, automation, chat-driven ops |
+| MCP tools (1:1 with REST) | mcp-go | AI agent integration — same domain logic exposed through multiple interfaces (REST for humans/apps, MCP for agents) |
 | MCP bridge | stdio-to-HTTP bridge | Tool distribution — making HTTP services available as local CLI tools for AI agents |
 | Dual database | SQLite + PostgreSQL | Deployment flexibility — SQLite for dev/edge/single-node, PostgreSQL for production/multi-node |
 | Goose migrations | Embedded SQL migrations | Schema management — version-controlled schema changes, zero-downtime deployments |
@@ -77,7 +77,14 @@ in a real system.
 | Dockerfile | Multi-stage distroless build | Container deployment — minimal attack surface, reproducible production images |
 | OpenSpec specs | Capability-organized specs | Requirements management — living documentation, spec-driven development, change tracking |
 
-## Endpoints
+## Interfaces
+
+The same domain logic is exposed through two interfaces — REST for
+humans and applications, MCP for AI agents. Every REST endpoint has a
+corresponding MCP tool. Both call the same service/store layer,
+demonstrating hexagonal architecture's interface independence.
+
+### REST API
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -87,6 +94,15 @@ in a real system.
 | GET | `/v1/health` | Health check (database ping) |
 | * | `/` | React SPA dashboard (when built with `-tags spa`) |
 | * | `/mcp` | MCP streamable HTTP endpoint |
+
+### MCP Tools (1:1 mapping)
+
+| Tool | Equivalent REST | Purpose |
+|------|----------------|---------|
+| `send_notification` | POST `/v1/notify` | Send a notification |
+| `reset_notification` | POST `/v1/notify/reset` | Reset for re-sending |
+| `list_notifications` | GET `/v1/notifications` | List all with state |
+| `check_health` | GET `/v1/health` | Health check |
 
 ## Project Layout
 
