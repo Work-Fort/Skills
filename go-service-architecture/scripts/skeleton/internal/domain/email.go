@@ -4,10 +4,11 @@ import "context"
 
 // EmailMessage holds the data needed to send one email.
 type EmailMessage struct {
-	To      []string
-	Subject string
-	HTML    string
-	Text    string
+	To        []string
+	Subject   string
+	HTML      string
+	Text      string
+	RequestID string
 }
 
 // EmailSender sends email messages. Implementations live in infra/.

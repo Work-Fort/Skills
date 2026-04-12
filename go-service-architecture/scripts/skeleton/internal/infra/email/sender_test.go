@@ -45,3 +45,17 @@ func TestExampleComCheckMultipleRecipients(t *testing.T) {
 		t.Errorf("expected ErrExampleDomain when any recipient is @example.com, got: %v", err)
 	}
 }
+
+func TestRequestIDExtraction(t *testing.T) {
+	msg := &domain.EmailMessage{
+		To:        []string{"user@company.com"},
+		Subject:   "Test",
+		HTML:      "<p>test</p>",
+		Text:      "test",
+		RequestID: "req_abc-123",
+	}
+	got := RequestIDFromMessage(msg)
+	if got != "req_abc-123" {
+		t.Errorf("RequestIDFromMessage() = %q, want %q", got, "req_abc-123")
+	}
+}

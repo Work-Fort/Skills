@@ -84,8 +84,6 @@ func (s *SMTPSender) Send(ctx context.Context, msg *domain.EmailMessage) error {
 }
 
 // RequestIDFromMessage extracts the request ID from the email message.
-// For now this is a placeholder that returns empty string. Task 5
-// adds the RequestID field to EmailMessage and this function reads it.
-func RequestIDFromMessage(_ *domain.EmailMessage) string {
-	return ""
+func RequestIDFromMessage(msg *domain.EmailMessage) string {
+	return msg.RequestID
 }
