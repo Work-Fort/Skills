@@ -179,9 +179,9 @@ func LoadConfig(configPath string) error {
     _ = k.Load(file.Provider(configPath), yaml.Parser())
     // Load from environment — strip prefix, lowercase, replace _ with .
     if err := k.Load(env.Provider("MYSERVICE_", ".", func(s string) string {
-        return strings.Replace(
+        return strings.ReplaceAll(
             strings.ToLower(strings.TrimPrefix(s, "MYSERVICE_")),
-            "_", ".", -1,
+            "_", ".",
         )
     }), nil); err != nil {
         return fmt.Errorf("load env config: %w", err)
@@ -224,9 +224,7 @@ func Open(dsn string) (*Store, error) {
     if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
         return nil, fmt.Errorf("set busy timeout: %w", err)
     }
-    if err := goose.SetBaseFS(migrations); err != nil {
-        return nil, fmt.Errorf("set migration fs: %w", err)
-    }
+    goose.SetBaseFS(migrations)
     if err := goose.SetDialect("sqlite3"); err != nil {
         return nil, fmt.Errorf("set dialect: %w", err)
     }
