@@ -961,6 +961,48 @@ are left to the implementer. Common options include `lestrrat-go/jwx`
 for JWT, `coreos/go-oidc` for OpenID Connect, or a custom middleware
 calling an internal auth service.
 
+## Hardening
+
+Security concerns that are out of scope for this architecture but
+should be addressed before production deployment:
+
+**Request Body Size Limits.** Wrap request bodies with
+`http.MaxBytesReader` to prevent memory exhaustion from unbounded
+POST bodies:
+
+```go
+r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit
+```
+
+**CORS.** Configure `Access-Control-Allow-Origin` to restrict which
+origins can call the API. Without CORS headers, the API cannot
+distinguish same-origin from cross-origin requests, which is relevant
+for CSRF. Use middleware to set allowed origins, methods, and headers.
+
+**Rate Limiting.** Add per-IP or per-token rate limiting to protect
+against abuse. Endpoints that create records, enqueue jobs, or send
+email are especially sensitive. Options include `golang.org/x/time/rate`
+for in-process limiting or a reverse proxy (nginx, Caddy) for
+infrastructure-level limiting.
+
+**WebSocket Origin Validation.** Pass `&websocket.AcceptOptions` with
+an `OriginPatterns` list to `websocket.Accept` to prevent cross-site
+WebSocket hijacking.
+
+**WebSocket Read Limits.** Set `conn.SetReadLimit()` to prevent
+clients from sending arbitrarily large frames. If the server only
+broadcasts and discards incoming messages, a small limit (512 bytes)
+is sufficient.
+
+**WebSocket Connection Limits.** Cap the number of concurrent
+WebSocket connections per IP or globally to prevent file descriptor
+exhaustion.
+
+**Error Response Sanitization.** Never expose `err.Error()` to
+clients — internal errors may contain database driver messages,
+connection strings, or file paths. Return a generic error message
+and log the real error server-side.
+
 ---
 
 ## MCP Integration

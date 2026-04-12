@@ -113,6 +113,47 @@ for the initial implementation but worth revisiting.
   `release:production`
 - The architecture docs should mention all three release tasks
 
+## Security: MCP Error Information Leakage (HIGH)
+
+- MCP tool handlers in `internal/infra/mcp/tools.go` expose raw
+  `err.Error()` to clients (e.g., `"internal error: " + err.Error()`)
+- This can leak database driver errors, connection strings, file paths
+- The HTTP handlers do this correctly — they return only "internal
+  server error" and log the real error server-side
+- Fix: MCP tools should follow the same pattern as HTTP handlers —
+  return a generic error message to the client, log the real error
+
+## Security: WebSocket Origin Validation (HIGH)
+
+- `websocket.Accept(w, r, nil)` accepts connections from any origin
+- Any webpage on any domain can open a WebSocket and receive all
+  broadcast state-change events (cross-site WebSocket hijacking)
+- Fix: pass `&websocket.AcceptOptions{OriginPatterns: [...]}` with
+  allowed origins
+
+## Security: WebSocket Read Size Limit (HIGH)
+
+- `ReadPump` calls `conn.Read(ctx)` without `conn.SetReadLimit()`
+- A malicious client can send arbitrarily large frames to exhaust
+  server memory
+- Since the server discards all incoming messages, set a small limit
+  (e.g., 512 bytes)
+
+## Security: Request Body Size Limits (MEDIUM)
+
+- POST endpoints (`/v1/notify`, `/v1/notify/reset`) do not use
+  `http.MaxBytesReader` — a client can send a multi-gigabyte body
+  to exhaust server memory
+- Fix: add `r.Body = http.MaxBytesReader(w, r.Body, 1<<20)` (1 MB)
+  at the top of each POST handler
+
+## Security: WebSocket Connection Limit (MEDIUM)
+
+- The hub accepts unlimited client registrations — a single attacker
+  can open thousands of connections to exhaust file descriptors
+- Fix: track connection count in the hub's `Run` loop, reject
+  registrations above a configurable limit (e.g., 1000)
+
 ## Dashboard Table Border Styling
 
 - Extra horizontal rule at the bottom of the table beneath the
