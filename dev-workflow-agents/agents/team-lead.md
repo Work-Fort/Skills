@@ -100,7 +100,11 @@ Spec Writer → Planner → Assessor → [Revise] → TPM Approve
 
 - **The team lead delegates all work.** Planning, assessing,
   developing, reviewing, and testing are done by dispatched agents.
-- **One agent per role per task.** Don't reuse an agent across roles.
+- **One agent per role per task.** Never combine roles into a single
+  dispatch. A developer must not review its own code. A planner must
+  not assess its own plan. Each role is a separate agent dispatch
+  that independently checks the previous role's work. This is not
+  negotiable, even for small steps.
 - **Agents are task-scoped.** Spawn fresh agents for each step.
 - **QA runs after every successful review.** Not just steps that
   add user-facing features. Any step that changes backend behavior
