@@ -5,7 +5,10 @@ const meta = {
   component: Button,
   tags: ['autodocs'],
   argTypes: {
-    variant: { control: 'select', options: ['primary', 'secondary'] },
+    variant: {
+      control: 'select',
+      options: ['primary', 'secondary', 'success', 'warning', 'info', 'danger'],
+    },
     disabled: { control: 'boolean' },
   },
 } satisfies Meta<typeof Button>
@@ -19,6 +22,22 @@ export const Primary: Story = {
 
 export const Secondary: Story = {
   args: { variant: 'secondary', children: 'Cancel' },
+}
+
+export const Success: Story = {
+  args: { variant: 'success', children: 'Confirm' },
+}
+
+export const Warning: Story = {
+  args: { variant: 'warning', children: 'Proceed' },
+}
+
+export const Info: Story = {
+  args: { variant: 'info', children: 'Details' },
+}
+
+export const Danger: Story = {
+  args: { variant: 'danger', children: 'Delete' },
 }
 
 export const Disabled: Story = {
