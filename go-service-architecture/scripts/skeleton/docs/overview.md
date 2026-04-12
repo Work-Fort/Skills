@@ -56,6 +56,7 @@ in a real system.
 | SMTP sending | go-mail adapter | Email delivery — notifications, alerts, reports, marketing automation |
 | Background queue | goqite | Async processing — payment processing, image resizing, report generation, webhook delivery |
 | State machine | stateless | Lifecycle tracking — order fulfillment, approval workflows, incident management, deployment pipelines |
+| Paginated list endpoint | Cursor-based pagination | Large datasets — paginating API results, infinite scroll, batch processing, export |
 | Duplicate prevention | Domain logic + store | Idempotency — payment deduplication, preventing double-submissions, at-most-once delivery |
 | 6-second send delay | Latency simulation | Async UX — showing progress for slow operations, optimistic UI, background processing feedback |
 | @example.com auto-fail | Error simulation | Graceful failure handling — unreachable services, invalid recipients, quota exhaustion |
