@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"time"
 
 	gomcp "github.com/mark3labs/mcp-go/mcp"
@@ -40,7 +41,8 @@ func HandleSendNotification(store domain.NotificationStore, enqueuer domain.Enqu
 			if errors.Is(err, domain.ErrAlreadyNotified) {
 				return gomcp.NewToolResultError("already notified"), nil
 			}
-			return gomcp.NewToolResultError("internal error: " + err.Error()), nil
+			slog.Error("create notification failed", "error", err)
+			return gomcp.NewToolResultError("internal error"), nil
 		}
 
 		jobPayload := queue.EmailJobPayload{
@@ -49,7 +51,11 @@ func HandleSendNotification(store domain.NotificationStore, enqueuer domain.Enqu
 		}
 		payload, _ := json.Marshal(jobPayload)
 		if err := enqueuer.Enqueue(ctx, payload); err != nil {
-			return gomcp.NewToolResultError("failed to enqueue: " + err.Error()), nil
+			slog.Error("enqueue notification job failed",
+				"error", err,
+				"notification_id", id,
+			)
+			return gomcp.NewToolResultError("internal error"), nil
 		}
 
 		result, _ := json.Marshal(map[string]string{"id": id})
@@ -72,7 +78,8 @@ func HandleResetNotification(store domain.ResetStore) server.ToolHandlerFunc {
 			if errors.Is(err, domain.ErrNotFound) {
 				return gomcp.NewToolResultError("not found"), nil
 			}
-			return gomcp.NewToolResultError("internal error: " + err.Error()), nil
+			slog.Error("get notification for reset failed", "error", err)
+			return gomcp.NewToolResultError("internal error"), nil
 		}
 
 		prevStatus := n.Status
@@ -83,7 +90,8 @@ func HandleResetNotification(store domain.ResetStore) server.ToolHandlerFunc {
 			n.RetryCount,
 		)
 		if err := sm.FireCtx(ctx, domain.TriggerReset); err != nil {
-			return gomcp.NewToolResultError("reset failed: " + err.Error()), nil
+			slog.Error("state machine reset failed", "error", err)
+			return gomcp.NewToolResultError("internal error"), nil
 		}
 
 		//nolint:errcheck // Log failure is non-fatal; reset already succeeded.
@@ -93,7 +101,8 @@ func HandleResetNotification(store domain.ResetStore) server.ToolHandlerFunc {
 		n.RetryCount = 0
 		n.UpdatedAt = time.Time{}
 		if err := store.UpdateNotification(ctx, n); err != nil {
-			return gomcp.NewToolResultError("update failed: " + err.Error()), nil
+			slog.Error("update notification for reset failed", "error", err)
+			return gomcp.NewToolResultError("internal error"), nil
 		}
 
 		return gomcp.NewToolResultText("notification reset"), nil
@@ -113,7 +122,8 @@ func HandleListNotifications(store domain.NotificationStore) server.ToolHandlerF
 
 		notifications, err := store.ListNotifications(ctx, after, limit)
 		if err != nil {
-			return gomcp.NewToolResultError("list failed: " + err.Error()), nil
+			slog.Error("list notifications failed", "error", err)
+			return gomcp.NewToolResultError("internal error"), nil
 		}
 
 		type item struct {

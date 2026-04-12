@@ -3,6 +3,8 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/qmuntal/stateless"
@@ -95,6 +97,54 @@ type stubEnqueuer struct {
 func (e *stubEnqueuer) Enqueue(_ context.Context, payload []byte) error {
 	e.jobs = append(e.jobs, payload)
 	return nil
+}
+
+// --- Fail store for error-leakage tests ---
+
+type failStore struct {
+	stubNotificationStore
+}
+
+func (s *failStore) CreateNotification(_ context.Context, _ *domain.Notification) error {
+	return fmt.Errorf("pq: connection refused to 10.0.0.5:5432")
+}
+
+func (s *failStore) GetNotificationByEmail(_ context.Context, _ string) (*domain.Notification, error) {
+	return nil, fmt.Errorf("pq: connection refused to 10.0.0.5:5432")
+}
+
+func (s *failStore) ListNotifications(_ context.Context, _ string, _ int) ([]*domain.Notification, error) {
+	return nil, fmt.Errorf("pq: relation \"notifications\" does not exist")
+}
+
+// --- Fail enqueuer for error-leakage tests ---
+
+type failEnqueuer struct{}
+
+func (e *failEnqueuer) Enqueue(_ context.Context, _ []byte) error {
+	return fmt.Errorf("goqite: queue full, 10.0.0.5:5432 not responding")
+}
+
+// --- Fail store for state machine error path (tools.go line 86) ---
+
+type failStateMachineStore struct {
+	stubNotificationStore
+}
+
+func (s *failStateMachineStore) NotificationStateMutator(_ string) func(ctx context.Context, state stateless.State) error {
+	return func(_ context.Context, _ stateless.State) error {
+		return fmt.Errorf("pq: could not serialize access due to concurrent update on 10.0.0.5:5432")
+	}
+}
+
+// --- Fail store for update error path (tools.go line 96) ---
+
+type failUpdateStore struct {
+	stubNotificationStore
+}
+
+func (s *failUpdateStore) UpdateNotification(_ context.Context, _ *domain.Notification) error {
+	return fmt.Errorf("pq: deadlock detected on 10.0.0.5:5432")
 }
 
 // --- Tests ---
@@ -262,5 +312,175 @@ func TestCheckHealthTool(t *testing.T) {
 	text := result.Content[0].(gomcp.TextContent).Text
 	if text == "" {
 		t.Error("expected non-empty health result text")
+	}
+}
+
+func TestSendNotificationToolInternalErrorSanitized(t *testing.T) {
+	store := &failStore{}
+	enqueuer := &stubEnqueuer{}
+	handler := HandleSendNotification(store, enqueuer)
+
+	req := gomcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"email": "user@company.com"}
+
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError for internal failure")
+	}
+
+	text := result.Content[0].(gomcp.TextContent).Text
+	if text != "internal error" {
+		t.Errorf("error text = %q, want %q", text, "internal error")
+	}
+	if strings.Contains(text, "pq:") || strings.Contains(text, "10.0.0.5") {
+		t.Errorf("error text leaks internal details: %q", text)
+	}
+}
+
+func TestSendNotificationToolEnqueueErrorSanitized(t *testing.T) {
+	store := newStubStore()
+	enqueuer := &failEnqueuer{}
+	handler := HandleSendNotification(store, enqueuer)
+
+	req := gomcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"email": "user@company.com"}
+
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError for enqueue failure")
+	}
+
+	text := result.Content[0].(gomcp.TextContent).Text
+	if text != "internal error" {
+		t.Errorf("error text = %q, want %q", text, "internal error")
+	}
+	if strings.Contains(text, "goqite") || strings.Contains(text, "10.0.0.5") {
+		t.Errorf("error text leaks internal details: %q", text)
+	}
+}
+
+func TestResetNotificationToolInternalErrorSanitized(t *testing.T) {
+	store := &failStore{}
+	handler := HandleResetNotification(store)
+
+	req := gomcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"email": "user@company.com"}
+
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError for internal failure")
+	}
+
+	text := result.Content[0].(gomcp.TextContent).Text
+	if text != "internal error" {
+		t.Errorf("error text = %q, want %q", text, "internal error")
+	}
+	if strings.Contains(text, "pq:") || strings.Contains(text, "10.0.0.5") {
+		t.Errorf("error text leaks internal details: %q", text)
+	}
+}
+
+func TestListNotificationsToolInternalErrorSanitized(t *testing.T) {
+	store := &failStore{}
+	handler := HandleListNotifications(store)
+
+	req := gomcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{}
+
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError for internal failure")
+	}
+
+	text := result.Content[0].(gomcp.TextContent).Text
+	if text != "internal error" {
+		t.Errorf("error text = %q, want %q", text, "internal error")
+	}
+	if strings.Contains(text, "pq:") || strings.Contains(text, "relation") {
+		t.Errorf("error text leaks internal details: %q", text)
+	}
+}
+
+func TestResetNotificationToolStateMachineErrorSanitized(t *testing.T) {
+	store := &failStateMachineStore{
+		stubNotificationStore: stubNotificationStore{
+			notifications: map[string]*domain.Notification{
+				"user@company.com": {
+					ID:         "ntf_sm",
+					Email:      "user@company.com",
+					Status:     domain.StatusDelivered,
+					RetryCount: 0,
+					RetryLimit: domain.DefaultRetryLimit,
+				},
+			},
+		},
+	}
+	handler := HandleResetNotification(store)
+
+	req := gomcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"email": "user@company.com"}
+
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError for state machine failure")
+	}
+
+	text := result.Content[0].(gomcp.TextContent).Text
+	if text != "internal error" {
+		t.Errorf("error text = %q, want %q", text, "internal error")
+	}
+	if strings.Contains(text, "pq:") || strings.Contains(text, "10.0.0.5") || strings.Contains(text, "serialize") {
+		t.Errorf("error text leaks internal details: %q", text)
+	}
+}
+
+func TestResetNotificationToolUpdateErrorSanitized(t *testing.T) {
+	store := &failUpdateStore{
+		stubNotificationStore: stubNotificationStore{
+			notifications: map[string]*domain.Notification{
+				"user@company.com": {
+					ID:         "ntf_upd",
+					Email:      "user@company.com",
+					Status:     domain.StatusDelivered,
+					RetryCount: 0,
+					RetryLimit: domain.DefaultRetryLimit,
+				},
+			},
+		},
+	}
+	handler := HandleResetNotification(store)
+
+	req := gomcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"email": "user@company.com"}
+
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError for update failure")
+	}
+
+	text := result.Content[0].(gomcp.TextContent).Text
+	if text != "internal error" {
+		t.Errorf("error text = %q, want %q", text, "internal error")
+	}
+	if strings.Contains(text, "pq:") || strings.Contains(text, "10.0.0.5") || strings.Contains(text, "deadlock") {
+		t.Errorf("error text leaks internal details: %q", text)
 	}
 }
