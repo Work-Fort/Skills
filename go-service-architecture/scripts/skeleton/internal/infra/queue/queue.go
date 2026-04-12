@@ -23,6 +23,14 @@ type EmailJobPayload struct {
 	RequestID      string `json:"request_id"`
 }
 
+// Flavor selects the SQL dialect for goqite.
+type Flavor int
+
+const (
+	FlavorSQLite   Flavor = iota // default
+	FlavorPostgres
+)
+
 // NotificationQueue wraps a goqite queue and implements
 // httpapi.Enqueuer so the handler can enqueue jobs without depending
 // on goqite directly.
@@ -31,16 +39,19 @@ type NotificationQueue struct {
 }
 
 // NewNotificationQueue creates a goqite queue named "notifications"
-// sharing the given *sql.DB (REQ-011). MaxReceive is set to 8 as a
-// safety net (REQ-013a) -- application-level retry limits are enforced
-// by the job handler in the worker, not by goqite.
-func NewNotificationQueue(db *sql.DB) (*NotificationQueue, error) {
-	q := goqite.New(goqite.NewOpts{
+// sharing the given *sql.DB (service-database REQ-019). The flavor
+// parameter selects the SQL dialect for goqite.
+func NewNotificationQueue(db *sql.DB, flavor Flavor) (*NotificationQueue, error) {
+	opts := goqite.NewOpts{
 		DB:         db,
 		Name:       queueName,
 		MaxReceive: 8,
 		Timeout:    30 * time.Second,
-	})
+	}
+	if flavor == FlavorPostgres {
+		opts.SQLFlavor = goqite.SQLFlavorPostgreSQL
+	}
+	q := goqite.New(opts)
 	return &NotificationQueue{q: q}, nil
 }
 

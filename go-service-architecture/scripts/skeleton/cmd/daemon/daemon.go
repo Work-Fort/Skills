@@ -14,13 +14,14 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"maragu.dev/goqite"
 
 	"github.com/workfort/notifier/internal/config"
+	"github.com/workfort/notifier/internal/infra/db"
 	"github.com/workfort/notifier/internal/infra/email"
 	"github.com/workfort/notifier/internal/infra/httpapi"
 	"github.com/workfort/notifier/internal/infra/queue"
 	"github.com/workfort/notifier/internal/infra/seed"
-	"github.com/workfort/notifier/internal/infra/sqlite"
 )
 
 // NewCmd creates the daemon subcommand.
@@ -84,20 +85,32 @@ func RunServer(ctx context.Context, cfg ServerConfig) error {
 		cfg.DSN = filepath.Join(config.StatePath(), "notifier.db")
 	}
 
-	// Open the store.
-	store, err := sqlite.Open(cfg.DSN)
+	// Open the store (SQLite or PostgreSQL based on DSN).
+	store, err := db.Open(cfg.DSN)
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
 	defer func() { _ = store.Close() }()
 
+	// Determine goqite SQL flavor from DSN.
+	var queueFlavor queue.Flavor
+	if strings.HasPrefix(cfg.DSN, "postgres") {
+		queueFlavor = queue.FlavorPostgres
+	}
+
 	// Run QA seed data (no-op in non-QA builds).
-	if err := seed.RunSeed(store.DB()); err != nil {
-		return fmt.Errorf("run seed: %w", err)
+	if strings.HasPrefix(cfg.DSN, "postgres") {
+		if err := seed.RunSeed(store.DB(), goqite.SQLFlavorPostgreSQL); err != nil {
+			return fmt.Errorf("run seed: %w", err)
+		}
+	} else {
+		if err := seed.RunSeed(store.DB()); err != nil {
+			return fmt.Errorf("run seed: %w", err)
+		}
 	}
 
 	// Set up goqite queue and job runner.
-	nq, err := queue.NewNotificationQueue(store.DB())
+	nq, err := queue.NewNotificationQueue(store.DB(), queueFlavor)
 	if err != nil {
 		return fmt.Errorf("create notification queue: %w", err)
 	}

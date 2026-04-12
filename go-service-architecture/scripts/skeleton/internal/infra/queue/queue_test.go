@@ -11,7 +11,7 @@ import (
 
 func TestNotificationQueueEnqueue(t *testing.T) {
 	db := setupTestDB(t)
-	q, err := NewNotificationQueue(db)
+	q, err := NewNotificationQueue(db, FlavorSQLite)
 	if err != nil {
 		t.Fatalf("NewNotificationQueue() error: %v", err)
 	}
