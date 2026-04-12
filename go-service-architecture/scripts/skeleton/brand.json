@@ -2,5 +2,29 @@
   "primary": "#1a1a2e",
   "accent": "#e94560",
   "surface": "#16213e",
-  "text": "#eaeaea"
+  "text": "#eaeaea",
+  "fontSans": "Inter, ui-sans-serif, system-ui, sans-serif",
+  "fontMono": "JetBrains Mono, ui-monospace, monospace",
+  "semantic": {
+    "success": {
+      "light": { "bg": "#dcfce7", "text": "#166534" },
+      "dark":  { "bg": "#052e16", "text": "#86efac" }
+    },
+    "warning": {
+      "light": { "bg": "#ffedd5", "text": "#9a3412" },
+      "dark":  { "bg": "#431407", "text": "#fdba74" }
+    },
+    "danger": {
+      "light": { "bg": "#fee2e2", "text": "#991b1b" },
+      "dark":  { "bg": "#450a0a", "text": "#fca5a5" }
+    },
+    "info": {
+      "light": { "bg": "#f3e8ff", "text": "#6b21a8" },
+      "dark":  { "bg": "#3b0764", "text": "#d8b4fe" }
+    },
+    "neutral": {
+      "light": { "bg": "#fef9c3", "text": "#854d0e" },
+      "dark":  { "bg": "#422006", "text": "#fde047" }
+    }
+  }
 }
