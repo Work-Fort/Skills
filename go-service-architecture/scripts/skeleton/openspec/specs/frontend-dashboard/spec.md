@@ -28,10 +28,24 @@ Provides a React SPA dashboard embedded in the Go binary for monitoring notifica
 
 ### React Application
 
-- REQ-012: The dashboard SHALL display a table of all notifications with their current state, email, retry count, and retry limit.
+- REQ-012: The dashboard SHALL display a table of all notifications with their current state, email, retry count, and retry limit. Below the table, the pagination component SHALL display the current page number and total page count.
 - REQ-013: The dashboard SHALL connect to `/v1/ws` via WebSocket to receive real-time state updates without polling.
 - REQ-014: The dashboard SHALL provide a resend button that calls `POST /v1/notify/reset` for a given notification.
 - REQ-015: The dashboard SHALL include an API client module for communicating with the REST endpoints.
+
+### Table Border Styling
+
+- REQ-046: The notifications table SHALL be wrapped in a container `<div>` with `rounded-lg border` and `overflow-hidden` to clip child content to the rounded corners. The container border SHALL be the only visible border on the table's outer edges.
+- REQ-047: Table rows SHALL NOT have explicit `border-b` classes. Inter-row borders SHALL be achieved exclusively via `divide-y` on the `<tbody>` element, which applies a top border to every row except the first.
+- REQ-048: The `<table>` element SHALL NOT have its own border styles. The visual border SHALL come solely from the wrapping container `<div>`.
+- REQ-049: No `<hr>` elements SHALL appear inside or immediately after the table container.
+
+### Empty State
+
+- REQ-050: When the notification list is empty (zero rows), the dashboard SHALL render the table with its header row and a single `<tbody>` row containing a `<td>` that spans all columns (`colSpan` equal to the number of header columns).
+- REQ-051: The empty state `<td>` SHALL display the text "No notifications yet" centered within the cell, using muted text color (`text-gray-500 dark:text-gray-400`) and vertical padding (`py-12`) for visual emphasis.
+- REQ-052: The empty state SHALL be rendered inside the same table structure (same `<div>` container, same `<table>`, same `<thead>`) as the populated state, so that the table headers remain visible.
+- REQ-053: The `Dashboard.stories.tsx` Empty story SHALL render the empty state inside the table (headers visible with the "No notifications yet" row), NOT as a standalone message outside the table.
 
 ### Tailwind CSS and Dark Mode
 
@@ -93,6 +107,16 @@ Provides a React SPA dashboard embedded in the Go binary for monitoring notifica
 - REQ-043: The `@storybook/test-runner` package and `axe-playwright` package SHALL be listed in `web/package.json` devDependencies.
 - REQ-044: The test-runner config SHALL use `preVisit` to inject axe into the page and `postVisit` to run axe checks after each story renders, calling `checkA11y(page)` from `axe-playwright`.
 - REQ-045: The `@storybook/addon-a11y` SHALL remain installed and configured in `.storybook/main.ts` for interactive axe-core checks during development. The test-runner provides the automated CI gate in addition to the interactive addon.
+
+### Pagination Enhancement
+
+- REQ-054: The `Pagination` component SHALL accept `currentPage` (number, 1-indexed), `totalPages` (number), and `onPageChange` (callback accepting a page number) props in addition to the existing navigation props.
+- REQ-055: The `Pagination` component SHALL display numbered page buttons for direct page access. When the total number of pages exceeds 7, the component SHALL show the first page, last page, current page with its immediate neighbors, and ellipsis indicators for skipped ranges.
+- REQ-056: The `Pagination` component SHALL highlight the current page button with a visually distinct style (e.g., filled background using the `primary` Button variant) while non-current pages use the `secondary` variant.
+- REQ-057: The `Pagination` component SHALL display a "Page X of Y" text label indicating the current page and total pages.
+- REQ-058: When `totalPages` is 0 or 1, the `Pagination` component SHALL NOT render any page buttons or navigation controls.
+- REQ-059: The `Pagination.stories.tsx` file SHALL include stories for: `ManyPages` (e.g., 10+ pages, current page in the middle showing ellipsis), `SinglePage` (1 page, controls hidden), `FirstPage` (current page is 1), `LastPage` (current page is the last), and `FewPages` (e.g., 5 pages, all page numbers visible without ellipsis).
+- REQ-060: The `useNotifications` hook SHALL expose `currentPage` (number, 1-indexed), `totalPages` (number), and `totalCount` (number) derived from the API response `meta.total_count` and `meta.total_pages`. It SHALL also expose a `goToPage(page: number)` callback.
 
 ## Scenarios
 
@@ -227,3 +251,56 @@ Provides a React SPA dashboard embedded in the Go binary for monitoring notifica
 - **When** devDependencies are inspected
 - **Then** `@storybook/test-runner` SHALL be present
 - **And** `axe-playwright` SHALL be present
+
+### Scenario: Table has clean rounded borders without double border at bottom
+
+- **Given** the notifications table contains one or more rows
+- **When** the table renders in the browser
+- **Then** the wrapping `<div>` SHALL have `rounded-lg`, `border`, and `overflow-hidden` classes
+- **And** no `<tr>` inside the table SHALL have a `border-b` class
+- **And** the `<tbody>` SHALL use `divide-y` to separate rows
+- **And** no `<hr>` element SHALL be present inside or immediately after the table container
+
+### Scenario: Empty state displays message inside table
+
+- **Given** the notification list is empty (zero notifications)
+- **When** the dashboard renders
+- **Then** the table `<thead>` with column headers SHALL be visible
+- **And** the `<tbody>` SHALL contain exactly one `<tr>` with a single `<td>` spanning all columns
+- **And** the `<td>` SHALL display the text "No notifications yet"
+- **And** the text SHALL be centered with muted color styling
+
+### Scenario: Storybook Empty story shows in-table empty state
+
+- **Given** `Dashboard.stories.tsx` is loaded in Storybook
+- **When** the "Empty" story renders
+- **Then** the table headers (ID, Email, Status, Retries, Actions) SHALL be visible
+- **And** a single row SHALL display "No notifications yet" spanning all columns
+- **And** no content SHALL appear outside the table container
+
+### Scenario: Pagination displays page numbers
+
+- **Given** 50 notifications exist and the page size is 20
+- **When** the dashboard loads
+- **Then** the pagination component SHALL display page buttons "1", "2", "3"
+- **And** page 1 SHALL be highlighted as the current page
+- **And** the text "Page 1 of 3" SHALL be visible
+
+### Scenario: Pagination shows ellipsis for many pages
+
+- **Given** 200 notifications exist and the page size is 20
+- **When** the user navigates to page 5
+- **Then** the pagination component SHALL display "1 ... 4 5 6 ... 10"
+- **And** page 5 SHALL be highlighted as the current page
+
+### Scenario: Pagination hidden for single page
+
+- **Given** 10 notifications exist and the page size is 20
+- **When** the dashboard loads
+- **Then** the pagination component SHALL NOT render page buttons or Previous/Next controls
+
+### Scenario: Storybook pagination stories exist
+
+- **Given** `Pagination.stories.tsx` is loaded in Storybook
+- **When** the stories list is displayed
+- **Then** stories SHALL exist for: `ManyPages`, `SinglePage`, `FirstPage`, `LastPage`, and `FewPages`

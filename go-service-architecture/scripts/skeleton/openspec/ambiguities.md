@@ -255,3 +255,67 @@
 **Decision made:** The font stacks include these as first-choice fonts but no `@font-face` or CDN import is added. Users with these fonts installed locally will see them; others get `ui-sans-serif` / `ui-monospace` fallbacks. Email always uses the fallback stack.
 **Alternative interpretation:** A `@font-face` declaration or Google Fonts `<link>` could ensure consistent rendering.
 **Impact if wrong:** If web font loading is expected, a font loading strategy would need to be added to `index.html`. This is additive and does not affect the token architecture.
+
+## Table Double Border Root Cause -- OPEN
+
+**Source says:** Future work #15 says "Extra horizontal rule at the bottom of the table beneath the rounded border -- looks like a double border." It suggests checking for "a stray `<hr>`, extra `border-bottom` on the last row, or a `border-collapse` issue conflicting with `rounded` corners."
+**Ambiguity:** The current `NotificationRow` component has `border-b border-gray-200 dark:border-gray-700` on each `<tr>`, while the `<tbody>` also uses `divide-y divide-gray-200`. Both produce inter-row borders, but only the explicit `border-b` on the last row creates a visible border at the bottom that doubles up with the container's `border`. The `divide-y` utility only applies borders *between* siblings (via `* + *` selector), so it does not produce a bottom border on the last row. However, the wrapping `<div>` currently uses `rounded-lg border` without `overflow-hidden`, which means child content can visually bleed past the rounded corners.
+**Decision made:** The spec (REQ-046, REQ-047) requires: (1) removing the explicit `border-b` from `<tr>` elements in `NotificationRow`, relying on `divide-y` on `<tbody>` for inter-row borders; (2) adding `overflow-hidden` to the container `<div>` so table content clips to the rounded corners. This addresses both the double border and the corner clipping issue.
+**Alternative interpretation:** The fix could instead keep the explicit `border-b` on rows and remove the `divide-y` from `<tbody>`, then use `last:border-b-0` on the final row. This is more fragile since it requires the last row to always have the override class.
+**Impact if wrong:** If the actual cause is something other than the `border-b` / `divide-y` overlap (e.g., a browser-specific rendering issue with `border-collapse` on rounded containers), the fix would not resolve the visual defect. The implementer should verify visually after applying the change.
+
+## Empty State -- App.tsx vs DashboardLayout Story Inconsistency -- OPEN
+
+**Source says:** Future work #16 says "Add a full-width table row with a centered message" and "This applies to both the live dashboard and the Empty Storybook story variant." The current `App.tsx` has an empty state rendered as a standalone `<div>` outside any table. The `Dashboard.stories.tsx` DashboardLayout component renders the table unconditionally with no empty state handling -- an empty `notifications` array produces a table with headers and an empty `<tbody>`.
+**Ambiguity:** Should the empty state logic live in `App.tsx` (the live dashboard) only, or should `Dashboard.stories.tsx` also be updated? Currently these two components duplicate the table markup independently. Updating only `App.tsx` would leave the Storybook story showing a different empty state than the real app.
+**Decision made:** The spec (REQ-052, REQ-053) requires both `App.tsx` and `Dashboard.stories.tsx` to render the empty state as an in-table row. The DashboardLayout in the story file must be updated to include the same empty-state conditional rendering as the live app.
+**Alternative interpretation:** The table rendering could be extracted into a shared component (e.g., `NotificationTable`) that both `App.tsx` and `Dashboard.stories.tsx` use. This would eliminate the duplication. However, the future work item does not mention refactoring -- it only asks for the empty state row.
+**Impact if wrong:** If only `App.tsx` is updated, the Storybook Empty story continues to show a blank table with no message, which does not match the real app behavior. If a shared component is extracted without being asked for, it changes the component architecture beyond what was requested.
+
+## Empty State -- Column Count for colSpan -- OPEN
+
+**Source says:** Future work #16 says "full-width table row." The current table has 5 columns: ID, Email, Status, Retries, Actions.
+**Ambiguity:** Should the `colSpan` be hardcoded to `5`, or derived dynamically (e.g., from a constant or by counting header cells)?
+**Decision made:** The spec (REQ-050) says `colSpan` SHALL equal the number of header columns, without mandating how the value is obtained. The current table has 5 columns. A hardcoded `colSpan={5}` is acceptable given the table structure is static and defined in the same component.
+**Alternative interpretation:** A dynamic approach (e.g., defining columns as an array and using `.length`) would be more resilient to future column additions but adds complexity for a table that rarely changes.
+**Impact if wrong:** If a column is added or removed later and the hardcoded `colSpan` is not updated, the empty state row will not span the full table width. The visual impact is minor (slightly misaligned cell) but noticeable.
+
+## Pagination Enhancement -- COUNT(*) and List Not in Same Transaction -- OPEN
+
+**Source says:** Future work #5 says "This requires a `SELECT COUNT(*)` query in both SQLite and PostgreSQL stores." The current `HandleList` handler calls `store.ListNotifications` in a single query. The enhancement adds a second call to `store.CountNotifications`.
+**Ambiguity:** Should the count and list queries be executed within the same database transaction to ensure consistency? Without a transaction, a notification could be created or deleted between the two queries, making `total_count` inconsistent with the actual page of results (e.g., `total_count` says 25 but only 24 are returned across all pages).
+**Decision made:** The spec (REQ-021) does not require a transaction. The count is informational for UI display, not transactional. The list handler calls `CountNotifications` and `ListNotifications` as separate queries. For a dashboard showing near-real-time data with WebSocket updates, a slightly stale count is acceptable.
+**Alternative interpretation:** A transaction or a combined query (`SELECT *, COUNT(*) OVER() FROM notifications ...`) would guarantee consistency. The window function approach avoids a separate query entirely but adds complexity to the SQL and the response parsing.
+**Impact if wrong:** If a transaction is required, the `NotificationStore` interface would need a transactional method or the handler would need to manage transactions directly (violating the current domain/infra boundary). If the window function approach is preferred, the `ListNotifications` return type would need to include the total count, changing the interface signature.
+
+## Pagination Enhancement -- Direct Page Jump with Cursor-Based Pagination -- OPEN
+
+**Source says:** Future work #5 says "Pagination component updated to show numbered page buttons." The current API uses cursor-based pagination (`after` / `next_cursor`), not offset-based.
+**Ambiguity:** Numbered page buttons imply the user can click page 5 to jump directly there. But cursor-based pagination only supports sequential navigation -- you need the cursor from page 4 to fetch page 5. How should the frontend handle clicking a page number that has not been visited yet (no cursor in the stack)?
+**Decision made:** The spec (REQ-055) requires numbered page buttons for positional context. The `goToPage` callback (REQ-060) can navigate to any previously visited page (using the cursor stack) and sequentially forward from the furthest visited page. Pages beyond the cursor stack are displayed but not directly clickable -- or the frontend fetches pages sequentially to reach the target. The page numbers primarily serve as a "you are here" indicator, with Previous/Next remaining the primary navigation mechanism.
+**Alternative interpretation:** The API could be extended with offset-based pagination (`?page=5&limit=20`) alongside cursors, giving the frontend true random access. Or the frontend could pre-fetch all cursors by paginating through the entire dataset in the background.
+**Impact if wrong:** If direct page jump is expected to be instant, the cursor-based API cannot support it without sequential fetching. Users clicking page 10 from page 1 would experience a delay as 9 pages are fetched sequentially. If offset pagination is added, it introduces the well-known problems of offset-based pagination (skipped/duplicated rows during concurrent writes).
+
+## Pagination Enhancement -- Page Number Button Ellipsis Threshold -- OPEN
+
+**Source says:** Future work #5 says "numbered page buttons" and "Storybook story should show variants with many pages." No specific threshold for when to show ellipsis vs all page numbers is given.
+**Ambiguity:** At what total page count should the component switch from showing all page numbers to showing ellipsis? For example, with 5 pages, should all 5 buttons be shown? With 8 pages? With 20?
+**Decision made:** The spec (REQ-055) uses a threshold of 7 pages. When `totalPages` is 7 or fewer, all page numbers are displayed. When `totalPages` exceeds 7, the component shows: first page, ellipsis (if gap exists), current page with immediate neighbors, ellipsis (if gap exists), last page. This is a common pattern used by GitHub, Google, and similar UIs.
+**Alternative interpretation:** The threshold could be 5 (more compact), 10 (showing more pages), or configurable via a prop. Some designs show a fixed window of 5 page numbers that slides with the current page.
+**Impact if wrong:** A threshold that is too low truncates needlessly for small page counts. A threshold that is too high produces a long row of buttons that wraps awkwardly on narrow screens. The value 7 is a safe default that can be adjusted without spec changes -- it is a UI preference, not a behavioral contract.
+
+## Pagination Enhancement -- MCP list_notifications Response Shape -- OPEN
+
+**Source says:** Future work #5 says "MCP `list_notifications` tool response should also include totals." The current MCP response is a flat JSON object `{"notifications": [...]}` without a `meta` wrapper.
+**Ambiguity:** Should the MCP response adopt the same `meta` structure as the REST API (`{"notifications": [...], "meta": {"total_count": 25, "total_pages": 2}}`), or include `total_count` and `total_pages` as top-level keys (`{"notifications": [...], "total_count": 25, "total_pages": 2}`)?
+**Decision made:** The spec defers to the existing MCP pattern. The current MCP handler returns `{"notifications": [...]}` as a flat object. The totals SHALL be added as top-level keys: `{"notifications": [...], "total_count": 25, "total_pages": 2}`. This is consistent with the current MCP response structure which does not use a `meta` wrapper.
+**Alternative interpretation:** The MCP response could mirror the REST API exactly with a `meta` object, maintaining structural parity. This would make it easier for consumers that interact with both REST and MCP.
+**Impact if wrong:** MCP consumers that expect `meta.total_count` would not find it at the top level, and vice versa. Since MCP tools are consumed by AI agents (not browsers), the impact is limited to agent prompt engineering rather than hard-coded client parsing.
+
+## Pagination Enhancement -- Pagination Component Hides at 0 or 1 Pages -- OPEN
+
+**Source says:** Future work #5 says "Pagination component updated to show numbered page buttons and 'Page X of Y' text." No guidance on what to show when there is only one page or zero pages.
+**Ambiguity:** Should the pagination component render anything when all results fit on a single page? The current component shows Previous/Next buttons even when both are disabled (the `SinglePage` Storybook story shows this).
+**Decision made:** The spec (REQ-058) says the component SHALL NOT render any controls when `totalPages` is 0 or 1. This is a behavior change from the current component, which renders disabled Previous/Next buttons on a single page. The rationale is that page numbers and "Page 1 of 1" provide no useful information.
+**Alternative interpretation:** The component could continue to render in a minimal state (e.g., just "Page 1 of 1" text with no buttons) to maintain consistent layout height below the table. Hiding the component entirely causes the table to be taller on single-page views, which may create a visual inconsistency between paginated and non-paginated states.
+**Impact if wrong:** If the component should remain visible for layout consistency, the spec would need to allow rendering at `totalPages <= 1` with controls disabled. If hidden, the table container may shift position when navigating between a 2-page result and a 1-page result after a filter change (not currently applicable since there are no filters, but relevant for future extensions).

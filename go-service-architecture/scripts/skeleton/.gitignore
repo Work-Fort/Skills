@@ -23,3 +23,9 @@ Thumbs.db
 # Email build output
 email/dist/
 email/node_modules/
+
+# Storybook build output
+web/storybook-static/
+
+# TypeScript build info
+*.tsbuildinfo

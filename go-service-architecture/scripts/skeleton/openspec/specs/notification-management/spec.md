@@ -20,7 +20,7 @@ Provides the reset endpoint for re-sending notifications, the paginated list end
 ### List Endpoint
 
 - REQ-008: The service SHALL expose `GET /v1/notifications` returning all notifications with their current state.
-- REQ-009: The list endpoint SHALL support cursor-based pagination. Query parameters SHALL be `after` (base64-encoded cursor from a previous response) and `limit` (page size). The response body SHALL include a `meta` object with `has_more` (boolean) and `next_cursor` (base64-encoded string, present when `has_more` is true).
+- REQ-009: The list endpoint SHALL support cursor-based pagination. Query parameters SHALL be `after` (base64-encoded cursor from a previous response) and `limit` (page size, default 20, maximum 100). The response body SHALL include a `meta` object with `has_more` (boolean), `next_cursor` (base64-encoded string, present when `has_more` is true), `total_count` (integer, total number of notifications across all pages), and `total_pages` (integer, computed as `ceil(total_count / limit)`).
 - REQ-010: Each notification in the response SHALL include: `id`, `email`, `state`, `retry_count`, `retry_limit`, `created_at`, and `updated_at`.
 
 ### Health Endpoint
@@ -30,6 +30,13 @@ Provides the reset endpoint for re-sending notifications, the paginated list end
 - REQ-013: When the database is reachable, the endpoint SHALL return HTTP 200 with JSON body `{"status": "healthy"}`.
 - REQ-014: When the database is not reachable, the endpoint SHALL return HTTP 503 with JSON body `{"status": "unhealthy"}`.
 - REQ-015: The response SHALL set the `Content-Type` header to `application/json`.
+
+### Count Query
+
+- REQ-019: The `NotificationStore` interface SHALL include a `CountNotifications(ctx context.Context) (int, error)` method that returns the total number of notification records.
+- REQ-020: Both the SQLite and PostgreSQL store implementations SHALL implement `CountNotifications` using `SELECT COUNT(*) FROM notifications`.
+- REQ-021: The list handler SHALL call `CountNotifications` in addition to `ListNotifications` and include the result as `meta.total_count` in the response. `meta.total_pages` SHALL be computed as `ceil(total_count / limit)`.
+- REQ-022: When `total_count` is 0, `total_pages` SHALL be 0.
 
 ### REST Framework
 
@@ -63,10 +70,37 @@ Provides the reset endpoint for re-sending notifications, the paginated list end
 ### Scenario: List notifications with pagination
 
 - **Given** 25 notifications exist in the database
-- **When** a GET request is sent to `/v1/notifications`
+- **When** a GET request is sent to `/v1/notifications` with default limit (20)
 - **Then** the system SHALL return HTTP 200
-- **And** the response SHALL contain a page of notifications
+- **And** the response SHALL contain 20 notifications
 - **And** each notification SHALL include `id`, `email`, `state`, `retry_count`, and `retry_limit`
+- **And** `meta.has_more` SHALL be `true`
+- **And** `meta.total_count` SHALL be `25`
+- **And** `meta.total_pages` SHALL be `2`
+
+### Scenario: Total count reflects all notifications
+
+- **Given** 50 notifications exist in the database
+- **When** a GET request is sent to `/v1/notifications?limit=10`
+- **Then** `meta.total_count` SHALL be `50`
+- **And** `meta.total_pages` SHALL be `5`
+- **And** `meta.has_more` SHALL be `true`
+
+### Scenario: Total pages is zero when no notifications exist
+
+- **Given** 0 notifications exist in the database
+- **When** a GET request is sent to `/v1/notifications`
+- **Then** `meta.total_count` SHALL be `0`
+- **And** `meta.total_pages` SHALL be `0`
+- **And** `meta.has_more` SHALL be `false`
+- **And** the `notifications` array SHALL be empty
+
+### Scenario: Total pages rounds up for partial last page
+
+- **Given** 21 notifications exist in the database
+- **When** a GET request is sent to `/v1/notifications?limit=20`
+- **Then** `meta.total_count` SHALL be `21`
+- **And** `meta.total_pages` SHALL be `2`
 
 ### Scenario: Health check with healthy database
 
