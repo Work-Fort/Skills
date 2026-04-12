@@ -113,11 +113,29 @@ Search for all code related to the capability. Read source files, tests, configu
 
 Determine what belongs in this spec and what belongs in adjacent specs. A capability should be cohesive — everything in the spec serves the same user-facing function.
 
+**Splitting signals — a spec is too broad when:**
+- The purpose section needs more than three sentences
+- The spec covers multiple unrelated concerns (e.g., health checks AND CLI setup AND database configuration)
+- Requirements exceed ~20 SHALLs — this usually means multiple capabilities are merged
+- Different teams or roles would own different parts of the spec
+
+**Split by user-facing capability, not by implementation layer.** "MCP tools" is a capability. "Infrastructure" is not — it's a grab-bag. Split infrastructure into focused specs: CLI, database, logging, build system, etc.
+
+**Example — too broad:**
+- `service-infra` covering CLI, config, database, migrations, logging, shutdown, build types (70+ requirements)
+
+**Better — one capability per spec:**
+- `service-cli` — cobra subcommands, koanf config, XDG paths
+- `service-database` — dual database, migrations, connection pooling
+- `service-observability` — structured logging, request ID
+- `service-build` — build types, mise tasks, Dockerfile, seed data
+
 ### 3. Write the spec
 
 - Start with the Purpose section. If you cannot explain the purpose in three sentences, the scope is too broad.
 - Write requirements from the code you read. Every requirement must reflect current behavior or a committed change.
 - Write scenarios that exercise each requirement.
+- Target 8-20 requirements per spec. Fewer is fine for simple capabilities. More than 20 is a signal to split.
 
 ### 4. Save to `openspec/specs/<capability>/spec.md`
 
