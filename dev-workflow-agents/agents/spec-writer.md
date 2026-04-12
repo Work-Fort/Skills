@@ -98,6 +98,12 @@ Every spec follows this structure:
 - **Include architecture constraints.** If a component must live in a specific layer (domain vs infra), or must implement a port interface, or must use a specific pattern (accessor/mutator, iota enums), state it as a SHALL requirement.
 - **Include implementation-critical details.** Library names, database pragmas, timeout values, connection pool settings, and build flags are not optional details — they affect correctness and must be specified. An implementer should not have to guess which library to use.
 - **Don't drop secondary requirements.** UX details (loading states, system preference detection), tooling requirements (Storybook format, accessibility addons), and fallback behaviors (plaintext email body) are real requirements. Include them.
+- **State machine verification.** When specifying state machines, list EVERY permitted transition explicitly. Then for each special case (fast-fail, shortcut, skip), verify the transition exists in the list. Write a scenario for each special-case path that asserts which states are visited AND which are skipped. If a path skips a state, add a THEN clause: "AND the state SHALL NOT pass through `<skipped state>`."
+- **Reset side effects.** When a reset or rollback operation exists, specify ALL fields that are affected — not just the state. If counters, timestamps, delivery results, or other fields are cleared, state each one as a requirement.
+- **Default behaviors.** When a configuration or parameter is optional, specify what happens when it is absent. "Default to SQLite when no DSN is configured" and "store database in XDG state directory" are requirements, not assumptions.
+- **Dev/test tooling dependencies.** If the project requires a specific tool for testing (e.g., a mock SMTP server), specify it by name, how it is installed, and how it integrates with the test suite.
+- **Name the header.** If a value is propagated in an HTTP header or email header, specify the exact header name (`X-Request-ID`, `Authorization`, etc.), not just "propagate the value in a header."
+- **Cross-spec consistency.** When multiple specs reference the same concept (e.g., state transitions), they must agree. If spec A says a transition is `pending → failed` and spec B says it is `sending → failed`, one of them is wrong. Before finalizing, check that all specs referencing the same state machine use the same transition list.
 
 ### Scenario Rules
 
@@ -306,3 +312,7 @@ After the proposal is approved, apply the delta to the spec file. The spec must 
 - **Getting state transitions wrong.** When specifying state machines, trace every path carefully. A shortcut like "pending → sending → failed" when the actual path is "pending → failed" (skipping sending) is a behavioral error that produces wrong code.
 - **Dropping secondary UX requirements.** Loading states, accessibility, system preference detection, plaintext fallbacks, and Storybook configuration are not nice-to-haves — they are requirements that affect user experience and compliance.
 - **Using descriptive language in scenarios instead of prescriptive.** THEN clauses must use SHALL. "The response is 404" is descriptive. "The system SHALL return HTTP 404" is prescriptive.
+- **Inconsistent state machines across specs.** If two specs reference the same state machine, they must use identical transition lists. Review all specs that mention the same states before finalizing.
+- **Forgetting reset side effects.** A reset that changes state but doesn't clear counters, results, or timestamps is incomplete. Every field affected by a reset must be stated.
+- **Omitting default behaviors.** If no DSN is configured, what database is used? If no SMTP host is set, what happens? Defaults are requirements.
+- **Unnamed dev/test tools.** "Use a mock SMTP server for testing" is incomplete. Name it, specify how it's installed, and how it's started.
