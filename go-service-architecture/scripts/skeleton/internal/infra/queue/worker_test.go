@@ -109,7 +109,7 @@ func TestEmailWorkerSuccess(t *testing.T) {
 		RetryLimit: 3,
 	}
 	sender := &spyEmailSender{}
-	worker := NewEmailWorker(store, sender)
+	worker := NewEmailWorker(store, sender, nil)
 
 	payload, _ := json.Marshal(EmailJobPayload{
 		NotificationID: "ntf_123",
@@ -160,7 +160,7 @@ func TestEmailWorkerSendFailure(t *testing.T) {
 		RetryLimit: 3,
 	}
 	sender := &spyEmailSender{err: errors.New("smtp timeout")}
-	worker := NewEmailWorker(store, sender)
+	worker := NewEmailWorker(store, sender, nil)
 
 	payload, _ := json.Marshal(EmailJobPayload{
 		NotificationID: "ntf_456",
@@ -199,7 +199,7 @@ func TestEmailWorkerRetryLimitExceeded(t *testing.T) {
 		RetryLimit: 3,
 	}
 	sender := &spyEmailSender{err: errors.New("still failing")}
-	worker := NewEmailWorker(store, sender)
+	worker := NewEmailWorker(store, sender, nil)
 
 	payload, _ := json.Marshal(EmailJobPayload{
 		NotificationID: "ntf_789",
@@ -230,6 +230,90 @@ func TestEmailWorkerRetryLimitExceeded(t *testing.T) {
 	}
 }
 
+// stubBroadcaster captures broadcast messages.
+type stubBroadcaster struct {
+	messages [][]byte
+}
+
+func (b *stubBroadcaster) Broadcast(msg []byte) {
+	b.messages = append(b.messages, msg)
+}
+
+// stubSender is a minimal email sender that always succeeds.
+type stubSender struct{}
+
+func (s *stubSender) Send(_ context.Context, _ *domain.EmailMessage) error {
+	return nil
+}
+
+func TestEmailWorkerBroadcastsOnDelivery(t *testing.T) {
+	store := newSpyStore()
+	store.notifications["ntf_bcast-1"] = &domain.Notification{
+		ID:         "ntf_bcast-1",
+		Email:      "user@company.com",
+		Status:     domain.StatusPending,
+		RetryCount: 0,
+		RetryLimit: domain.DefaultRetryLimit,
+	}
+
+	bc := &stubBroadcaster{}
+	worker := NewEmailWorker(store, &stubSender{}, bc)
+
+	payload, _ := json.Marshal(EmailJobPayload{
+		NotificationID: "ntf_bcast-1",
+		Email:          "user@company.com",
+		RequestID:      "req_test-1",
+	})
+
+	err := worker.Handle(context.Background(), payload)
+	if err != nil {
+		t.Fatalf("Handle error: %v", err)
+	}
+
+	// Worker should broadcast at least for the sending and delivered
+	// transitions.
+	if len(bc.messages) < 2 {
+		t.Fatalf("broadcasts = %d, want >= 2", len(bc.messages))
+	}
+
+	// Verify the last broadcast is the delivered state.
+	var last map[string]string
+	if err := json.Unmarshal(bc.messages[len(bc.messages)-1], &last); err != nil {
+		t.Fatalf("unmarshal last broadcast: %v", err)
+	}
+	if last["id"] != "ntf_bcast-1" {
+		t.Errorf("broadcast id = %q, want ntf_bcast-1", last["id"])
+	}
+	if last["state"] != "delivered" {
+		t.Errorf("broadcast state = %q, want delivered", last["state"])
+	}
+}
+
+func TestEmailWorkerNilBroadcasterDoesNotPanic(t *testing.T) {
+	store := newSpyStore()
+	store.notifications["ntf_nil-1"] = &domain.Notification{
+		ID:         "ntf_nil-1",
+		Email:      "safe@company.com",
+		Status:     domain.StatusPending,
+		RetryCount: 0,
+		RetryLimit: domain.DefaultRetryLimit,
+	}
+
+	// Pass nil broadcaster -- worker should not panic.
+	worker := NewEmailWorker(store, &stubSender{}, nil)
+
+	payload, _ := json.Marshal(EmailJobPayload{
+		NotificationID: "ntf_nil-1",
+		Email:          "safe@company.com",
+		RequestID:      "req_test-nil",
+	})
+
+	err := worker.Handle(context.Background(), payload)
+	if err != nil {
+		t.Fatalf("Handle error: %v", err)
+	}
+}
+
 func TestEmailWorkerExampleComAutoFail(t *testing.T) {
 	store := newSpyStore()
 	store.notifications["ntf_ex1"] = &domain.Notification{
@@ -241,7 +325,7 @@ func TestEmailWorkerExampleComAutoFail(t *testing.T) {
 	}
 	// Sender returns ErrExampleDomain for @example.com addresses.
 	sender := &spyEmailSender{err: fmt.Errorf("send to test@example.com: %w", infraemail.ErrExampleDomain)}
-	worker := NewEmailWorker(store, sender)
+	worker := NewEmailWorker(store, sender, nil)
 
 	payload, _ := json.Marshal(EmailJobPayload{
 		NotificationID: "ntf_ex1",

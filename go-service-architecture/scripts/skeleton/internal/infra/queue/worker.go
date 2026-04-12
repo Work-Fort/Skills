@@ -28,15 +28,29 @@ type WorkerStore interface {
 // It uses the domain state machine for all state transitions and
 // logs each transition to the audit log.
 type EmailWorker struct {
-	store  WorkerStore
-	sender domain.EmailSender
+	store       WorkerStore
+	sender      domain.EmailSender
+	broadcaster domain.Broadcaster
 }
 
-// NewEmailWorker creates a new worker with the given store and email
-// sender. The store provides notification CRUD, state machine
-// accessor/mutator (database-backed), and transition logging.
-func NewEmailWorker(store WorkerStore, sender domain.EmailSender) *EmailWorker {
-	return &EmailWorker{store: store, sender: sender}
+// NewEmailWorker creates a new worker with the given store, email
+// sender, and optional broadcaster. If broadcaster is nil, state
+// changes are not broadcast (safe for tests and CLI contexts).
+func NewEmailWorker(store WorkerStore, sender domain.EmailSender, broadcaster domain.Broadcaster) *EmailWorker {
+	return &EmailWorker{store: store, sender: sender, broadcaster: broadcaster}
+}
+
+// broadcastState sends a JSON state change message to the WebSocket
+// hub. No-op if broadcaster is nil.
+func (w *EmailWorker) broadcastState(id string, state domain.Status) {
+	if w.broadcaster == nil {
+		return
+	}
+	msg, _ := json.Marshal(map[string]string{
+		"id":    id,
+		"state": state.String(),
+	})
+	w.broadcaster.Broadcast(msg)
 }
 
 // fireAndLog fires a trigger on the state machine and logs the
@@ -116,6 +130,7 @@ func (w *EmailWorker) Handle(ctx context.Context, payload []byte) error {
 	if err := w.fireAndLog(ctx, sm, n, prevStatus, sendTrigger, domain.StatusSending); err != nil {
 		return err
 	}
+	w.broadcastState(n.ID, domain.StatusSending)
 	// Re-read status from store after state machine transition.
 	n.Status = domain.StatusSending
 
@@ -151,6 +166,7 @@ func (w *EmailWorker) Handle(ctx context.Context, payload []byte) error {
 			if fErr := w.fireAndLog(ctx, sm, n, domain.StatusSending, domain.TriggerFailed, domain.StatusFailed); fErr != nil {
 				slog.Error("fire failed trigger", "error", fErr)
 			}
+			w.broadcastState(n.ID, domain.StatusFailed)
 			return nil // ack -- permanent failure, no retry
 		}
 
@@ -166,6 +182,7 @@ func (w *EmailWorker) Handle(ctx context.Context, payload []byte) error {
 			if fErr := w.fireAndLog(ctx, sm, n, domain.StatusSending, domain.TriggerFailed, domain.StatusFailed); fErr != nil {
 				slog.Error("fire failed trigger after guard rejection", "error", fErr)
 			}
+			w.broadcastState(n.ID, domain.StatusFailed)
 			return nil // ack -- retries exhausted
 		}
 		// soft_fail succeeded (sending -> not_sent).
@@ -173,6 +190,7 @@ func (w *EmailWorker) Handle(ctx context.Context, payload []byte) error {
 			domain.StatusSending, domain.StatusNotSent, domain.TriggerSoftFail); logErr != nil {
 			slog.Error("log transition failed", "error", logErr)
 		}
+		w.broadcastState(n.ID, domain.StatusNotSent)
 
 		n.RetryCount++
 		if updateErr := w.store.UpdateNotification(ctx, n); updateErr != nil {
@@ -186,6 +204,7 @@ func (w *EmailWorker) Handle(ctx context.Context, payload []byte) error {
 		slog.Error("fire delivered trigger", "error", fErr)
 		return fmt.Errorf("fire delivered: %w", fErr)
 	}
+	w.broadcastState(n.ID, domain.StatusDelivered)
 
 	slog.Info("email delivered",
 		"notification_id", n.ID,
