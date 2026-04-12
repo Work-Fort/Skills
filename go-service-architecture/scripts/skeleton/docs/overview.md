@@ -97,7 +97,7 @@ in a real system.
 | Graceful shutdown | Signal handling + drain | Zero-downtime deployments — connection draining, in-flight request completion, resource cleanup |
 | Middleware | Request logging, panic recovery | Cross-cutting concerns — observability, error containment, auth, rate limiting |
 | Port interfaces | Domain ports + infra adapters | Testability and flexibility — swap implementations without changing business logic |
-| E2E tests | Test harness + Mailpit | Integration verification — testing the real binary with real HTTP and real SMTP |
+| E2E tests | Test harness + Mailpit + QA build | Integration verification — testing the real binary with seeded data, real HTTP, and real SMTP |
 | Mise tasks | Namespaced .mise/tasks/ | Build automation — reproducible builds, CI/CD task definitions, developer onboarding |
 | Build variants (dev/qa/prod) | Build tags + embedded seed data | Environment-specific builds — demo modes, QA fixtures, feature flags, debug tooling |
 | Dockerfile | Multi-stage distroless build | Container deployment — minimal attack surface, reproducible production images |
@@ -110,7 +110,7 @@ Three build variants controlled by build tags:
 | Build | Tag | SPA | Seed Data | Use case |
 |-------|-----|-----|-----------|----------|
 | **dev** | (none) | No (proxy to Vite) | No | Local development with hot reload |
-| **qa** | `-tags spa,qa` | Yes (embedded) | Yes (embedded SQL) | Demo and QA — dashboard has activity from first boot |
+| **qa** | `-tags spa,qa` | Yes (embedded) | Yes (embedded SQL) | Demo, QA, and E2E tests — dashboard has activity from first boot |
 | **production** | `-tags spa` | Yes (embedded) | No | Production deployment |
 
 The QA build embeds a SQL seed script that populates the database with
