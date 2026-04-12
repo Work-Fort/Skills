@@ -111,3 +111,59 @@
 **Decision made:** HTTP 204 No Content, empty body. Updated in notification-management spec (REQ-007a and reset scenario).
 **Alternative interpretation:** Could return the updated notification object (consistent with REST conventions) or a simple `{"status": "reset"}` message.
 **Impact if wrong:** Frontend resend button may expect the updated notification in the response to update the UI immediately. If the body is empty, the frontend would need to re-fetch.
+
+## release:qa Build Flags -- OPEN
+
+**Source says:** Future work item #9 says "Add `.mise/tasks/release/qa` that builds with `-tags spa,qa` and includes the seed data, matching the pattern of `release:dev` and `release:production`." The existing `release:production` uses `CGO_ENABLED=0`, `-ldflags="-s -w -X main.Version=${VERSION}"`, and `-trimpath`. The existing `release:dev` uses only `-race` with no tags.
+**Ambiguity:** Should `release:qa` apply production-style flags (`CGO_ENABLED=0`, `-ldflags`, `-trimpath`) or be a simpler debug-friendly build? The source says "matching the pattern" but the two existing tasks have very different flag sets.
+**Decision made:** The spec (REQ-025) requires `-tags spa,qa` and output to `build/notifier` but does not mandate production stripping flags or the race detector. The implementer should decide based on usage context (QA testing vs demo distribution).
+**Alternative interpretation:** `release:qa` could mirror `release:production` exactly (with `-ldflags`, `-trimpath`, `CGO_ENABLED=0`) but with the additional `qa` tag. Or it could be a debug build with `-race` like `release:dev` but with `-tags spa,qa`.
+**Impact if wrong:** If production flags are used, QA builds lose debug symbols and race detection, making QA-discovered bugs harder to diagnose. If debug flags are used, QA builds are larger and slower, which matters for distribution to external testers.
+
+## release:qa Dependency on build:email -- RESOLVED
+
+**Source says:** The existing `release:production` task depends on both `build:web` and `build:email`. Future work item #9 does not mention email template compilation.
+**Ambiguity:** Should `release:qa` depend on `build:email` in addition to `build:web`? The QA build embeds the SPA (requiring `build:web`) and sends emails (requiring compiled templates from `build:email`). But the future work item only says "matching the pattern" without listing dependencies explicitly.
+**Decision made:** The `release:qa` task DOES need `build:email` as a dependency. Although the `ConsoleSender` (service-build REQ-026) logs email content to the console instead of sending via SMTP, the worker calls `RenderNotification` unconditionally in all builds before passing rendered content to `sender.Send`. The email templates in `internal/infra/email/dist/` are embedded via `//go:embed dist/*.html` and `//go:embed dist/*.txt` in `template.go`, which is compiled into all builds regardless of build tags. Without `build:email`, the `dist/` directory is empty and the `//go:embed` directives fail at compile time. This is a compile-time embedding constraint, not a sender behavior concern.
+**Alternative interpretation:** If the `//go:embed` directives were also build-tag-gated or if the worker conditionally skipped template rendering in QA, the dependency could be removed. But this would require invasive changes to unrelated code for minimal benefit.
+**Impact if wrong:** If `build:email` is removed from `release:qa`, the QA build fails at compile time with an `//go:embed` pattern match error because no files exist in `dist/`.
+
+## ConsoleSender File Organization -- OPEN
+
+**Source says:** Future work item #7 says "Use the same `//go:build qa` / `//go:build !qa` pattern" and references the seed data pattern (`seed_qa.go` / `seed_default.go`). The current SMTP sender lives in `internal/infra/email/sender.go` with no build tag.
+**Ambiguity:** How should the files be organized? The seed pattern uses two files in the same package: `seed_qa.go` (QA implementation) and `seed_default.go` (no-op for non-QA). For the email sender, the non-QA build is not a no-op -- it is the full SMTP sender. Should the file split be `sender_qa.go` (ConsoleSender) / `sender.go` (SMTPSender with `//go:build !qa` added), or should there be a separate factory function file?
+**Decision made:** The spec (service-build REQ-026) requires the `seed_qa.go` / `seed_default.go` file pair pattern. This means: `sender_qa.go` with `//go:build qa` containing `ConsoleSender` and a factory function, and `sender_default.go` with `//go:build !qa` containing `SMTPSender` and its factory function. The existing `sender.go` is split: shared types (`ErrExampleDomain`) move to a build-tag-free file, and each sender gets its own build-tagged file.
+**Alternative interpretation:** A single `sender.go` could remain build-tag-free with both implementations, using a factory function in build-tagged files to select which one to return. Or the `ConsoleSender` could live in a separate sub-package.
+**Impact if wrong:** If the file split is wrong, both senders could be compiled into the same binary, or the factory function might not resolve correctly. The `//go:build` constraint must ensure exactly one `NewEmailSender` factory is available per build.
+
+## ConsoleSender SMTP Configuration in QA Builds -- OPEN
+
+**Source says:** Future work item #7 says "QA builds should be fully standalone -- no Mailpit, no SMTP server." The current `daemon.go` unconditionally calls `email.NewSMTPSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPFrom)` which requires SMTP config values.
+**Ambiguity:** If QA builds use `ConsoleSender`, does the daemon still require SMTP configuration values (host, port, from address) at startup? The `ConsoleSender` does not need them, but the daemon's wiring code currently reads these from config unconditionally.
+**Decision made:** The spec (service-build REQ-032) says QA builds require no external dependencies. The daemon wiring code must use a build-tag-gated factory function (e.g., `email.NewSender(...)`) that accepts SMTP config in non-QA builds and ignores it in QA builds. QA builds SHALL NOT fail if SMTP configuration is absent.
+**Alternative interpretation:** The daemon could still require SMTP config values in QA builds but simply not use them. This keeps the config schema identical across all builds but violates the "no external dependencies" requirement if the SMTP host is validated or connected at startup.
+**Impact if wrong:** If SMTP config is required but absent, the QA binary fails at startup with a config validation error, defeating the standalone goal. If SMTP config is optional globally, production builds could accidentally start without SMTP config and silently fail to send emails.
+
+## @fail.com Timeout Error Type -- OPEN
+
+**Source says:** Future work item #8 says `@fail.com` produces a "simulated timeout." The notification-state-machine spec classifies errors into permanent (skip retry, go to `failed`) and transient (go to `not_sent`, eligible for retry).
+**Ambiguity:** What Go error type should the `@fail.com` timeout return? The worker uses `errors.Is(err, email.ErrExampleDomain)` to detect permanent failures. A timeout needs to be recognized as a transient error so the notification goes to `not_sent` rather than `failed`. Should it wrap `context.DeadlineExceeded`, define a new sentinel error like `ErrSimulatedTimeout`, or return a generic `errors.New("simulated timeout")`?
+**Decision made:** The spec (service-build REQ-029) says `@fail.com` returns "a timeout error (wrapping a `context.DeadlineExceeded`-style error)." This is intentionally imprecise -- the key requirement is that the error is NOT classified as permanent (not wrapping `ErrExampleDomain`), so the worker transitions to `not_sent` and retries.
+**Alternative interpretation:** A new sentinel `ErrSimulatedTimeout` would be more explicit and testable. Wrapping `context.DeadlineExceeded` could confuse error handling that checks for real context cancellation elsewhere in the call stack.
+**Impact if wrong:** If the error wraps `ErrExampleDomain`, the notification goes directly to `failed` instead of `not_sent`, defeating the purpose of simulating a retryable timeout.
+
+## @slow.com Delay Interaction with Existing 6-Second Delay -- OPEN
+
+**Source says:** Future work item #8 says `@slow.com` applies "extra-long delay (e.g., 30s)." REQ-016 requires all email sends to include a 6-second artificial delay.
+**Ambiguity:** Does the 30-second `@slow.com` delay replace the standard 6-second delay or stack on top of it? If stacked, total delay is 36 seconds. If replaced, total delay is 30 seconds.
+**Decision made:** The spec (service-build REQ-029) says `@slow.com` applies "a 30-second delay before returning success." This is the total delay for `@slow.com` recipients -- it replaces the standard 6-second delay rather than adding to it. The 30-second delay is already long enough to demonstrate slow delivery behavior.
+**Alternative interpretation:** The 6-second delay (REQ-016) could apply universally as a first step, then `@slow.com` adds its own 30 seconds on top, for 36 seconds total. This preserves the invariant that every send has at least the base delay.
+**Impact if wrong:** If stacked, the delay is 36 seconds which may exceed the goqite visibility timeout (30 seconds by default in seed config), causing the job to be re-delivered while still processing. If replaced, the base delay contract (REQ-016) is technically violated for `@slow.com` addresses, though the spirit (making state transitions visible) is preserved.
+
+## Simulated Failure Domain Map Extensibility -- OPEN
+
+**Source says:** Future work item #8 lists three specific domains: `@example.com`, `@fail.com`, `@slow.com`. It says "extend the QA sender with a map."
+**Ambiguity:** Is the domain map hardcoded to exactly these three domains, or should it be configurable (e.g., via a config file or additional map entries)? The word "map" suggests a data structure, but the future work item only lists three fixed entries.
+**Decision made:** The spec (service-build REQ-029) defines exactly three hardcoded domains. The map is a compile-time constant, not runtime-configurable. This matches the QA build tag philosophy: QA behaviors are baked into the binary, not configured at runtime.
+**Alternative interpretation:** The map could be loaded from a config file or extended via additional build-tagged files, allowing QA testers to add custom simulated domains without recompiling.
+**Impact if wrong:** If hardcoded and a QA tester needs a new simulated domain, they must modify source code and rebuild. If configurable, there is additional config surface area that could be misconfigured.
