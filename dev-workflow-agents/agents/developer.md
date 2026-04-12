@@ -80,6 +80,8 @@ After all tasks, run every item in the plan's verification checklist. All must p
 
 **Verification gate:** You cannot claim anything passes unless you have run the command and seen the output in this session. "Should pass" and "looks correct" are not evidence. Run it, read the output, then state the result.
 
+**E2E regression check:** If an E2E test suite exists (e.g., `tests/e2e/`), run it as part of every step's verification — not just the step that created the tests. E2E tests catch regressions from any step that changes backend behavior.
+
 ### 6. Report completion
 
 State what was completed, list passing verifications with the actual output you observed, and note commits made. Do NOT push to remote — that requires team lead approval.
