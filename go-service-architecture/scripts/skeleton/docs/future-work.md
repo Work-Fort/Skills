@@ -49,6 +49,21 @@ for the initial implementation but worth revisiting.
 - The status badge colors and button colors should come from the same
   semantic token set so they're always in sync
 
+## Pagination Enhancement
+
+- Current pagination is Previous/Next only with no page context
+- Add page numbers and total page count (e.g., "Page 2 of 5")
+- Backend needs: `GET /v1/notifications` response should include
+  `meta.total_count` and `meta.total_pages` alongside existing
+  `has_more` and `next_cursor`
+- This requires a `SELECT COUNT(*)` query in both SQLite and
+  PostgreSQL stores
+- Frontend needs: Pagination component updated to show numbered
+  page buttons and "Page X of Y" text
+- MCP `list_notifications` tool response should also include totals
+- Storybook story should show variants with many pages, single page,
+  and current-page highlighting
+
 ## Resend Button UX
 
 - Consider whether the resend button should appear on notifications
