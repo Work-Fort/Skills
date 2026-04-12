@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Run full CI checks"
+#MISE depends=["lint:go", "test:unit", "build:go"]
+set -euo pipefail
+
+echo "CI passed"

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Run end-to-end tests"
+#MISE depends=["build:go"]
+set -euo pipefail
+
+cd tests/e2e
+go test -v -count=1 ./...

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Build release binary with embedded SPA"
+#MISE depends=["build:web"]
+set -euo pipefail
+
+VERSION="${VERSION:-dev}"
+CGO_ENABLED=0 go build \
+    -tags spa \
+    -ldflags="-s -w -X main.Version=${VERSION}" \
+    -trimpath \
+    -o build/notifier .

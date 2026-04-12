@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Build debug binary with race detector"
+set -euo pipefail
+
+go build -race -o build/notifier .

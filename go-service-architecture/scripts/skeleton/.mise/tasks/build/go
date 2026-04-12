@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Build the Go binary (debug, no SPA embed)"
+set -euo pipefail
+
+go build -o build/notifier .

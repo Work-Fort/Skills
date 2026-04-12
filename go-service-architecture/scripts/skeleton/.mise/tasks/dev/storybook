@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Start the Storybook dev server on port 6006"
+set -euo pipefail
+
+cd web
+npm run storybook -- --port 6006

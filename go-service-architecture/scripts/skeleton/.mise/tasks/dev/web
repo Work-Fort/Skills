@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Start the Vite dev server"
+set -euo pipefail
+
+cd web
+npm run dev
