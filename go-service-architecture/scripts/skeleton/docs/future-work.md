@@ -64,6 +64,19 @@ for the initial implementation but worth revisiting.
 - Storybook story should show variants with many pages, single page,
   and current-page highlighting
 
+## @example.com Auto-Fail Should Be Dev/QA Only
+
+- The `@example.com` rejection is hardcoded in the SMTP sender with
+  no build tag gating — production builds will also reject these
+  addresses, which is wrong
+- The auto-fail should only apply in dev and QA builds. Options:
+  - Build tag: `//go:build !production` on the check
+  - Config flag: `smtp.simulate_failures: true` defaulting to false
+  - Separate sender implementations: a `SimulatedSender` wrapping
+    the real sender, wired only in dev/QA
+- The config flag approach is most flexible — it can be toggled
+  without rebuilding
+
 ## Missing release:qa Mise Task
 
 - There's no `release:qa` task — QA builds currently require manual
