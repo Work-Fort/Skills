@@ -13,6 +13,7 @@ type NotificationStore interface {
 	GetNotificationByEmail(ctx context.Context, email string) (*Notification, error)
 	UpdateNotification(ctx context.Context, n *Notification) error
 	ListNotifications(ctx context.Context, after string, limit int) ([]*Notification, error)
+	CountNotifications(ctx context.Context) (int, error)
 }
 
 // TransitionLogger records state transitions for audit purposes.

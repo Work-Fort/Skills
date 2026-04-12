@@ -80,6 +80,10 @@ func (s *Store) ListNotifications(ctx context.Context, after string, limit int) 
 	return s.store.ListNotifications(ctx, after, limit)
 }
 
+func (s *Store) CountNotifications(ctx context.Context) (int, error) {
+	return s.store.CountNotifications(ctx)
+}
+
 func (s *Store) NotificationStateAccessor(notificationID string) func(ctx context.Context) (stateless.State, error) {
 	return s.store.NotificationStateAccessor(notificationID)
 }

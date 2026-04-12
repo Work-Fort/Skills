@@ -56,6 +56,10 @@ func (s *stubNotificationStore) ListNotifications(_ context.Context, _ string, _
 	return list, nil
 }
 
+func (s *stubNotificationStore) CountNotifications(_ context.Context) (int, error) {
+	return len(s.notifications), nil
+}
+
 func (s *stubNotificationStore) Ping(_ context.Context) error {
 	return nil
 }
@@ -115,6 +119,10 @@ func (s *failStore) GetNotificationByEmail(_ context.Context, _ string) (*domain
 
 func (s *failStore) ListNotifications(_ context.Context, _ string, _ int) ([]*domain.Notification, error) {
 	return nil, fmt.Errorf("pq: relation \"notifications\" does not exist")
+}
+
+func (s *failStore) CountNotifications(_ context.Context) (int, error) {
+	return 0, fmt.Errorf("pq: relation \"notifications\" does not exist")
 }
 
 // --- Fail enqueuer for error-leakage tests ---

@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/workfort/notifier/internal/domain"
@@ -310,6 +311,46 @@ func TestLogTransitionMultipleEntries(t *testing.T) {
 	}
 	if count != 4 {
 		t.Errorf("transition count = %d, want 4", count)
+	}
+}
+
+func TestCountNotifications(t *testing.T) {
+	store, err := Open("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+
+	ctx := context.Background()
+
+	// Empty database: count should be 0.
+	count, err := store.CountNotifications(ctx)
+	if err != nil {
+		t.Fatalf("CountNotifications() error: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("count = %d, want 0", count)
+	}
+
+	// Insert 3 notifications.
+	for i, email := range []string{"cnt1@test.com", "cnt2@test.com", "cnt3@test.com"} {
+		n := &domain.Notification{
+			ID:         fmt.Sprintf("ntf_cnt-%d", i+1),
+			Email:      email,
+			Status:     domain.StatusPending,
+			RetryLimit: domain.DefaultRetryLimit,
+		}
+		if err := store.CreateNotification(ctx, n); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	count, err = store.CountNotifications(ctx)
+	if err != nil {
+		t.Fatalf("CountNotifications() error: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("count = %d, want 3", count)
 	}
 }
 

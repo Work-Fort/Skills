@@ -68,6 +68,10 @@ func (s *spyStore) ListNotifications(_ context.Context, _ string, _ int) ([]*dom
 	return nil, nil
 }
 
+func (s *spyStore) CountNotifications(_ context.Context) (int, error) {
+	return len(s.notifications), nil
+}
+
 func (s *spyStore) LogTransition(_ context.Context, entityType, entityID string, from, to domain.Status, trigger domain.Trigger) error {
 	s.transitions = append(s.transitions, transitionRecord{
 		entityType: entityType,

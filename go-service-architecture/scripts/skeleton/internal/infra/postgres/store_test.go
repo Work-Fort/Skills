@@ -198,5 +198,48 @@ func TestPostgresLogTransition(t *testing.T) {
 	}
 }
 
+func TestPostgresCountNotifications(t *testing.T) {
+	dsn := testDSN(t)
+	store, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+
+	ctx := context.Background()
+	// Clean up.
+	_, _ = store.db.ExecContext(ctx, "DELETE FROM notifications")
+
+	// Empty database: count should be 0.
+	count, err := store.CountNotifications(ctx)
+	if err != nil {
+		t.Fatalf("CountNotifications() error: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("count = %d, want 0", count)
+	}
+
+	// Insert 2 notifications.
+	for _, email := range []string{"pgcnt1@test.com", "pgcnt2@test.com"} {
+		n := &domain.Notification{
+			ID:         domain.NewID("ntf"),
+			Email:      email,
+			Status:     domain.StatusPending,
+			RetryLimit: domain.DefaultRetryLimit,
+		}
+		if err := store.CreateNotification(ctx, n); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	count, err = store.CountNotifications(ctx)
+	if err != nil {
+		t.Fatalf("CountNotifications() error: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("count = %d, want 2", count)
+	}
+}
+
 // Compile-time check: Store implements domain.Store.
 var _ domain.Store = (*Store)(nil)

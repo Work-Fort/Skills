@@ -48,6 +48,10 @@ func (s *stubNotificationStore) ListNotifications(_ context.Context, _ string, _
 	return nil, nil
 }
 
+func (s *stubNotificationStore) CountNotifications(_ context.Context) (int, error) {
+	return len(s.notifications), nil
+}
+
 // stubEnqueuer captures enqueue calls without a real goqite queue.
 type stubEnqueuer struct {
 	jobs [][]byte

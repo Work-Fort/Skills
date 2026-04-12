@@ -170,6 +170,17 @@ func (s *Store) ListNotifications(ctx context.Context, after string, limit int) 
 	return result, rows.Err()
 }
 
+// CountNotifications returns the total number of notification records.
+// Satisfies notification-management REQ-020.
+func (s *Store) CountNotifications(ctx context.Context) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM notifications").Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count notifications: %w", err)
+	}
+	return count, nil
+}
+
 // NotificationStateAccessor returns an accessor function for the
 // stateless state machine. It reads the current status of a
 // notification by ID from the database.
