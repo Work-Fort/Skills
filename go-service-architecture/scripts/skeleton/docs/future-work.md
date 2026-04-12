@@ -70,12 +70,15 @@ for the initial implementation but worth revisiting.
   no build tag gating — production builds will also reject these
   addresses, which is wrong
 - The auto-fail should only apply in dev and QA builds. Options:
-  - Build tag: `//go:build !production` on the check
-  - Config flag: `smtp.simulate_failures: true` defaulting to false
-  - Separate sender implementations: a `SimulatedSender` wrapping
-    the real sender, wired only in dev/QA
-- The config flag approach is most flexible — it can be toggled
-  without rebuilding
+  - **Build tag** (`//go:build qa`): Consistent with how seed data
+    is gated. Requires a rebuild to toggle. Simple, no runtime cost.
+  - **Config flag** (`smtp.simulate_failures: true`): Toggled via
+    config file or env var without rebuilding. More flexible but
+    adds a runtime check on every send and a config surface that
+    could be misconfigured in production.
+- Build tag is the simpler and safer choice — it matches the existing
+  QA build pattern and makes it impossible to accidentally enable
+  simulated failures in production
 
 ## Missing release:qa Mise Task
 
