@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"embed"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -12,6 +13,9 @@ import (
 
 // Version is set from main.go, which receives it via -ldflags.
 var Version = "dev"
+
+// WebFS holds the embedded frontend filesystem, set from main.go.
+var WebFS embed.FS
 
 // NewRootCmd creates the root cobra command with PersistentPreRunE
 // that initialises XDG directories and loads configuration.
@@ -31,7 +35,7 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	cmd.AddCommand(daemon.NewCmd())
+	cmd.AddCommand(daemon.NewCmd(WebFS))
 	cmd.AddCommand(mcpbridge.NewCmd())
 	return cmd
 }

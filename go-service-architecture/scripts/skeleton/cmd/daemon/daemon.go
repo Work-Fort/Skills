@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"embed"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -27,11 +28,13 @@ import (
 )
 
 // NewCmd creates the daemon subcommand.
-func NewCmd() *cobra.Command {
+func NewCmd(frontendFS embed.FS) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "daemon",
 		Short: "Start the HTTP server",
-		RunE:  run,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runWithFS(cmd, args, frontendFS)
+		},
 	}
 	cmd.Flags().String("bind", "127.0.0.1", "Bind address")
 	cmd.Flags().Int("port", 8080, "Listen port")
@@ -39,10 +42,12 @@ func NewCmd() *cobra.Command {
 	cmd.Flags().String("smtp-host", "127.0.0.1", "SMTP server host")
 	cmd.Flags().Int("smtp-port", 1025, "SMTP server port")
 	cmd.Flags().String("smtp-from", "notifier@localhost", "Email sender address")
+	cmd.Flags().Bool("dev", false, "Enable dev mode (proxy to Vite dev server)")
+	cmd.Flags().String("dev-url", "http://localhost:5173", "Vite dev server URL")
 	return cmd
 }
 
-func run(cmd *cobra.Command, args []string) error {
+func runWithFS(cmd *cobra.Command, _ []string, frontendFS embed.FS) error {
 	// Initialise structured JSON logging.
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
@@ -53,6 +58,8 @@ func run(cmd *cobra.Command, args []string) error {
 	smtpHost := resolveString(cmd, "smtp-host")
 	smtpPort := resolveInt(cmd, "smtp-port")
 	smtpFrom := resolveString(cmd, "smtp-from")
+	dev, _ := cmd.Flags().GetBool("dev")
+	devURL := resolveString(cmd, "dev-url")
 
 	// Graceful shutdown on SIGINT/SIGTERM.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -65,25 +72,31 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	return RunServer(ctx, ServerConfig{
-		Bind:     bind,
-		Port:     port,
-		DSN:      dsn,
-		SMTPHost: smtpHost,
-		SMTPPort: smtpPort,
-		SMTPFrom: smtpFrom,
-		Version:  version,
+		Bind:       bind,
+		Port:       port,
+		DSN:        dsn,
+		SMTPHost:   smtpHost,
+		SMTPPort:   smtpPort,
+		SMTPFrom:   smtpFrom,
+		Version:    version,
+		Dev:        dev,
+		DevURL:     devURL,
+		FrontendFS: frontendFS,
 	})
 }
 
 // ServerConfig holds configuration for RunServer.
 type ServerConfig struct {
-	Bind     string
-	Port     int
-	DSN      string
-	SMTPHost string
-	SMTPPort int
-	SMTPFrom string
-	Version  string
+	Bind       string
+	Port       int
+	DSN        string
+	SMTPHost   string
+	SMTPPort   int
+	SMTPFrom   string
+	Version    string
+	Dev        bool
+	DevURL     string
+	FrontendFS embed.FS
 }
 
 // RunServer starts the HTTP server with the given configuration and

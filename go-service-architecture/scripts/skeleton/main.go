@@ -7,5 +7,6 @@ var Version = "dev"
 
 func main() {
 	cli.Version = Version
+	cli.WebFS = webFS
 	cli.Execute()
 }
