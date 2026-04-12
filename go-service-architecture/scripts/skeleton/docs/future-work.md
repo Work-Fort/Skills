@@ -48,7 +48,7 @@ for the initial implementation but worth revisiting.
 - The status badge colors and button colors should come from the same
   semantic token set so they're always in sync
 
-## #5 — Pagination Enhancement
+## #5 — Pagination Enhancement ✅
 
 - Current pagination is Previous/Next only with no page context
 - Add page numbers and total page count (e.g., "Page 2 of 5")
