@@ -63,7 +63,7 @@ for the initial implementation but worth revisiting.
 - Storybook story should show variants with many pages, single page,
   and current-page highlighting
 
-## #6 — @example.com Auto-Fail Should Be Dev/QA Only
+## #6 — @example.com Auto-Fail Should Be Dev/QA Only ✅
 
 - The `@example.com` rejection is hardcoded in the SMTP sender with
   no build tag gating — production builds will also reject these
@@ -79,7 +79,7 @@ for the initial implementation but worth revisiting.
   QA build pattern and makes it impossible to accidentally enable
   simulated failures in production
 
-## #7 — QA Build: Console-Only Email, No Mailpit Required
+## #7 — QA Build: Console-Only Email, No Mailpit Required ✅
 
 - QA builds should be fully standalone — no Mailpit, no SMTP server
 - Replace the SMTP sender with a console sender in QA builds that
@@ -92,7 +92,7 @@ for the initial implementation but worth revisiting.
 - This means QA testers and demos only need the single binary — no
   external dependencies at all
 
-## #8 — QA Build: Simulated Failure Domains
+## #8 — QA Build: Simulated Failure Domains ✅
 
 - Extend the QA sender with a map of domain-based simulated behaviors
   gated by `//go:build qa`:
