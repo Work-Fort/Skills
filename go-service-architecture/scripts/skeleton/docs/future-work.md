@@ -64,6 +64,15 @@ for the initial implementation but worth revisiting.
 - Storybook story should show variants with many pages, single page,
   and current-page highlighting
 
+## Empty State UX
+
+- The empty dashboard just shows a blank table with headers — no
+  indication that the empty state is intentional
+- Add a full-width table row with a centered message like "No
+  notifications yet" when the list is empty
+- This applies to both the live dashboard and the Empty Storybook
+  story variant
+
 ## Resend Button UX
 
 - Consider whether the resend button should appear on notifications
