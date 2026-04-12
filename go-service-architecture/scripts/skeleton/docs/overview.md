@@ -17,9 +17,25 @@ POST /v1/notify { email }
   → Create notification record (pending)
   → Enqueue email job via background queue
   → Worker picks up job, sends via SMTP
-  → State machine transitions: pending → sending → delivered/failed
-  → Dashboard shows result in real time
+  → State machine transitions: pending → sending → delivered/failed/not_sent
+  → Dashboard shows result in real time via WebSocket
 ```
+
+### State Machine
+
+```
+pending → sending → delivered
+                  → failed     (permanent — @example.com)
+                  → not_sent   (soft fail — retryable)
+
+not_sent → sending             (automatic retry via queue)
+any terminal → pending         (manual reset via /v1/notify/reset)
+```
+
+- **delivered** — email accepted by SMTP server
+- **failed** — permanent failure, will not retry (e.g., `@example.com`)
+- **not_sent** — transient failure, goqite auto-retries via visibility
+  timeout up to `MaxReceive` attempts before moving to `failed`
 
 ### Business Rules
 
