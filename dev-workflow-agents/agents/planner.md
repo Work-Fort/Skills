@@ -91,11 +91,16 @@ related_plans: []
 
 ## Process
 
-### 1. Prepare
+### 1. Explore before drafting
+
+Do NOT start writing the plan immediately. Understand the problem first:
 
 - Read the requirements. Extract every deliverable.
 - Read all source files the plan will touch.
 - Review previous step plans for established patterns.
+- If multiple valid approaches exist, propose 2-3 with trade-offs and get a decision before drafting.
+
+This applies to every plan regardless of perceived simplicity. "Simple" plans are where unexamined assumptions cause the most wasted work.
 
 ### 2. Draft the plan
 

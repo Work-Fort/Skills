@@ -103,6 +103,8 @@ Every spec follows this structure:
 
 ## Creating a New Spec
 
+Do NOT start writing specs from imagination. Read the codebase first — specs must reflect reality, not aspirations.
+
 ### 1. Read the codebase
 
 Search for all code related to the capability. Read source files, tests, configuration, and any existing documentation. Understand what the system actually does today.
