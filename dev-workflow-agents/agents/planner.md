@@ -103,12 +103,7 @@ Structure:
 
 1. **Overview** — what this step achieves and why
 2. **Prerequisites** — what must be true before starting
-3. **Task breakdown** — numbered tasks with:
-   - Description of the change
-   - Files to create or modify
-   - Full code in code blocks (the developer copies from the plan)
-   - Test commands and expected output
-   - Commit point and message
+3. **Task breakdown** — numbered tasks (see Task Structure below)
 4. **Verification checklist** — final checks after all tasks
 
 Key principles:
@@ -116,6 +111,67 @@ Key principles:
 - Use TDD flow for testable tasks
 - Use project task runner (e.g., `mise run`) for all commands
 - Include full code — the developer should not invent details
+- DRY, YAGNI — no speculative abstractions
+
+### Task Structure
+
+Each task starts with a header listing affected files, then bite-sized
+steps. Each step is ONE action (2-5 minutes):
+
+````markdown
+### Task N: [Component Name]
+
+**Files:**
+- Create: `exact/path/to/file.go`
+- Modify: `exact/path/to/existing.go:42-58`
+- Test: `exact/path/to/file_test.go`
+
+**Step 1: Write the failing test**
+
+```go
+func TestSpecificBehavior(t *testing.T) {
+    result := Function(input)
+    // assert...
+}
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `go test -run TestSpecificBehavior ./internal/...`
+Expected: FAIL with "undefined: Function"
+
+**Step 3: Write minimal implementation**
+
+```go
+func Function(input string) string {
+    return result
+}
+```
+
+**Step 4: Run test to verify it passes**
+
+Run: `go test -run TestSpecificBehavior ./internal/...`
+Expected: PASS
+
+**Step 5: Commit**
+
+`feat(scope): add specific feature`
+````
+
+**Granularity rules:**
+- "Write the test" is a step. "Run the test" is a separate step.
+- "Implement the code" is a step. "Verify it passes" is a separate step.
+- "Commit" is always its own step.
+- Each step has ONE action, not multiple.
+
+**File paths must be exact:**
+- For new files: `Create: internal/infra/email/sender.go`
+- For modifications: `Modify: internal/infra/httpapi/server.go:87-103`
+- Line numbers tell the developer exactly where to look.
+
+**Commands must include expected output:**
+- Not "run the tests" but the exact command and what success/failure looks like.
+- Include the expected error message for failing tests so the developer can confirm they're failing for the right reason.
 
 ### 3. Stop — do NOT commit
 

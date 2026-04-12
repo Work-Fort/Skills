@@ -36,7 +36,7 @@ The developer copies from the plan — they should not invent details.
 
 ## 3. Plan Structure
 
-```markdown
+````markdown
 ---
 (YAML frontmatter)
 ---
@@ -52,21 +52,41 @@ What must be true before starting.
 ## Tasks
 
 ### Task 1: Description
-**Files:** `path/to/file.go` (create | modify)
 
-(Description of the change)
+**Files:**
+- Create: `exact/path/to/file.go`
+- Modify: `exact/path/to/existing.go:42-58`
+- Test: `exact/path/to/file_test.go`
+
+**Step 1: Write the failing test**
 
 ```go
-// Full code block — developer copies this
+func TestSpecificBehavior(t *testing.T) {
+    // full test code
+}
 ```
 
-**Test:**
-```bash
-mise run test:unit
-```
-Expected: test passes / specific output
+**Step 2: Run test to verify it fails**
 
-**Commit:** `feat(scope): description`
+Run: `go test -run TestSpecificBehavior ./internal/...`
+Expected: FAIL with "undefined: Function"
+
+**Step 3: Write minimal implementation**
+
+```go
+func Function(input string) string {
+    // full implementation
+}
+```
+
+**Step 4: Run test to verify it passes**
+
+Run: `go test -run TestSpecificBehavior ./internal/...`
+Expected: PASS
+
+**Step 5: Commit**
+
+`feat(scope): add specific feature`
 
 ### Task 2: ...
 
@@ -75,6 +95,36 @@ Expected: test passes / specific output
 - [ ] All tests pass
 - [ ] Linter produces no warnings
 - [ ] Manual smoke tests (if applicable)
+````
+
+## 3a. Bite-Sized Step Granularity
+
+Each step is ONE action (2-5 minutes). Do not combine actions:
+
+- "Write the test" — step
+- "Run it to verify it fails" — separate step
+- "Implement the code" — separate step
+- "Run it to verify it passes" — separate step
+- "Commit" — separate step
+
+## 3b. Exact File Paths
+
+Always include exact file paths. For modifications, include line
+numbers so the developer knows exactly where to look:
+
+- `Create: internal/infra/email/sender.go`
+- `Modify: internal/infra/httpapi/server.go:87-103`
+- `Test: internal/infra/email/sender_test.go`
+
+## 3c. Commands with Expected Output
+
+Every "run" step must include the exact command AND what the output
+should look like. For failing tests, include the expected error message
+so the developer can confirm they're failing for the right reason:
+
+```
+Run: `go test -run TestSessionTimeout ./tests/e2e/...`
+Expected: FAIL with "expected 401 after timeout, got 200"
 ```
 
 ## 4. Commit Messages
