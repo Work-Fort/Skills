@@ -3,6 +3,7 @@ module github.com/workfort/notifier
 go 1.26.0
 
 require (
+	github.com/coder/websocket v1.8.14
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.1
 	github.com/knadh/koanf/parsers/yaml v1.1.0
