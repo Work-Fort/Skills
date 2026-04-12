@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/workfort/notifier/cmd/daemon"
 	"github.com/workfort/notifier/internal/config"
 )
 
@@ -29,6 +30,7 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	cmd.AddCommand(daemon.NewCmd())
 	return cmd
 }
 
