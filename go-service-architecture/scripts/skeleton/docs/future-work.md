@@ -33,6 +33,14 @@ for the initial implementation but worth revisiting.
   checkboxes, and radio buttons against a 3:1 minimum
 - Run contrast checks in CI as part of `mise run ci`
 
+## StatusBadge Color Differentiation
+
+- `pending` and `sending` both use yellow — they should be visually
+  distinct since they represent different stages
+- Change `sending` to purple to differentiate from `pending` (yellow)
+- Final palette: pending=yellow, sending=purple, delivered=green,
+  failed=red, not_sent=orange
+
 ## Resend Button UX
 
 - Consider whether the resend button should appear on notifications
