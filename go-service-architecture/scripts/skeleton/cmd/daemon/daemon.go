@@ -20,8 +20,10 @@ import (
 	"github.com/workfort/notifier/internal/infra/db"
 	"github.com/workfort/notifier/internal/infra/email"
 	"github.com/workfort/notifier/internal/infra/httpapi"
+	mcpinfra "github.com/workfort/notifier/internal/infra/mcp"
 	"github.com/workfort/notifier/internal/infra/queue"
 	"github.com/workfort/notifier/internal/infra/seed"
+	"github.com/workfort/notifier/internal/infra/ws"
 )
 
 // NewCmd creates the daemon subcommand.
@@ -56,6 +58,12 @@ func run(cmd *cobra.Command, args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Get version from the root command.
+	version := "dev"
+	if root := cmd.Root(); root != nil {
+		version = root.Version
+	}
+
 	return RunServer(ctx, ServerConfig{
 		Bind:     bind,
 		Port:     port,
@@ -63,6 +71,7 @@ func run(cmd *cobra.Command, args []string) error {
 		SMTPHost: smtpHost,
 		SMTPPort: smtpPort,
 		SMTPFrom: smtpFrom,
+		Version:  version,
 	})
 }
 
@@ -74,6 +83,7 @@ type ServerConfig struct {
 	SMTPHost string
 	SMTPPort int
 	SMTPFrom string
+	Version  string
 }
 
 // RunServer starts the HTTP server with the given configuration and
@@ -121,13 +131,30 @@ func RunServer(ctx context.Context, cfg ServerConfig) error {
 		return fmt.Errorf("create smtp sender: %w", err)
 	}
 
-	// Create and register the email worker.
-	worker := queue.NewEmailWorker(store, sender)
+	// Create a separate context for the hub. Shutdown cancels it
+	// after HTTP connections drain so write pumps can still dispatch
+	// messages during graceful shutdown (REQ-015).
+	hubCtx, hubCancel := context.WithCancel(context.Background())
+
+	// Create WebSocket hub and start it (REQ-006: before HTTP server).
+	hub := ws.NewHub()
+	go hub.Run(hubCtx)
+
+	// Create a separate context for the job runner. Shutdown cancels
+	// it after the hub so the runner can finish its current job before
+	// the store is closed.
+	runnerCtx, runnerCancel := context.WithCancel(context.Background())
+
+	// Create and register the email worker with broadcaster.
+	worker := queue.NewEmailWorker(store, sender, hub)
 	runner := queue.NewJobRunner(nq.Queue())
 	runner.Register("send_notification", worker.Handle)
 
 	// Start the job runner in a goroutine.
-	go runner.Start(ctx)
+	go runner.Start(runnerCtx)
+
+	// Create the MCP handler.
+	mcpHandler := mcpinfra.NewMCPHandler(store, nq, cfg.Version)
 
 	// Build the HTTP mux.
 	mux := http.NewServeMux()
@@ -135,6 +162,8 @@ func RunServer(ctx context.Context, cfg ServerConfig) error {
 	mux.HandleFunc("POST /v1/notify", httpapi.HandleNotify(store, nq))
 	mux.HandleFunc("POST /v1/notify/reset", httpapi.HandleReset(store))
 	mux.HandleFunc("GET /v1/notifications", httpapi.HandleList(store))
+	mux.HandleFunc("GET /v1/ws", ws.HandleWS(hub, hubCtx))
+	mux.Handle("/mcp/", http.StripPrefix("/mcp", mcpHandler))
 
 	// Apply middleware stack.
 	handler := httpapi.WithMiddleware(mux)
@@ -164,9 +193,30 @@ func RunServer(ctx context.Context, cfg ServerConfig) error {
 		return fmt.Errorf("server error: %w", err)
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	return srv.Shutdown(shutdownCtx)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer shutdownCancel()
+
+	// 1. Drain HTTP connections -- reject new requests, let
+	//    in-flight handlers (including WebSocket upgrades) finish.
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("http shutdown", "error", err)
+	}
+
+	// 2. Signal MCP SSE clients to reconnect (REQ-013).
+	if err := mcpHandler.Shutdown(shutdownCtx); err != nil {
+		slog.Error("mcp shutdown", "error", err)
+	}
+
+	// 3. Cancel hub context -- hub stops, write pumps close WS
+	//    connections with StatusNormalClosure (REQ-015).
+	hubCancel()
+
+	// 4. Cancel runner -- job runner drains current job, then exits.
+	runnerCancel()
+
+	// 5. Close database (store.Close) happens in the existing defer
+	//    block above.
+	return nil
 }
 
 // resolveString reads from koanf if the key exists (checking both
