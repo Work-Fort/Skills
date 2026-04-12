@@ -153,7 +153,7 @@ for the initial implementation but worth revisiting.
 - Fix: track connection count in the hub's `Run` loop, reject
   registrations above a configurable limit (e.g., 1000)
 
-## #15 — Dashboard Table Border Styling
+## #15 — Dashboard Table Border Styling ✅
 
 - Extra horizontal rule at the bottom of the table beneath the
   rounded border — looks like a double border
@@ -162,7 +162,7 @@ for the initial implementation but worth revisiting.
   row, or a table `border-collapse` issue conflicting with
   `rounded` corners
 
-## #16 — Empty State UX
+## #16 — Empty State UX ✅
 
 - The empty dashboard just shows a blank table with headers — no
   indication that the empty state is intentional
