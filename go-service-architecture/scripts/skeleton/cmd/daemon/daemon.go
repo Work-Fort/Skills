@@ -145,6 +145,8 @@ func RunServer(ctx context.Context, cfg ServerConfig) error {
 		return fmt.Errorf("create smtp sender: %w", err)
 	}
 
+	allowedOrigins := resolveAllowedOrigins()
+
 	// Create a separate context for the hub. Shutdown cancels it
 	// after HTTP connections drain so write pumps can still dispatch
 	// messages during graceful shutdown (REQ-015).
@@ -200,7 +202,7 @@ func RunServer(ctx context.Context, cfg ServerConfig) error {
 	mux.HandleFunc("POST /v1/notify", httpapi.HandleNotify(store, nq))
 	mux.HandleFunc("POST /v1/notify/reset", httpapi.HandleReset(store))
 	mux.HandleFunc("GET /v1/notifications", httpapi.HandleList(store))
-	mux.HandleFunc("GET /v1/ws", ws.HandleWS(hub, hubCtx))
+	mux.HandleFunc("GET /v1/ws", ws.HandleWS(hub, hubCtx, allowedOrigins))
 	mux.Handle("/mcp/", http.StripPrefix("/mcp", mcpHandler))
 
 	// SPA catch-all — must be last so API routes take priority.
@@ -280,4 +282,37 @@ func resolveInt(cmd *cobra.Command, key string) int {
 	}
 	v, _ := cmd.Flags().GetInt(key)
 	return v
+}
+
+// resolveAllowedOrigins returns the configured WebSocket origin
+// patterns. It checks the koanf YAML path first, then falls back
+// to the NOTIFIER_WS_ALLOWED_ORIGINS environment variable (comma-
+// separated). If neither is set, returns the default patterns that
+// permit local development (REQ-022).
+func resolveAllowedOrigins() []string {
+	defaultOrigins := []string{"localhost:*", "127.0.0.1:*"}
+
+	// Check koanf for the YAML config path.
+	if config.K.Exists("ws.allowed_origins") {
+		if origins := config.K.Strings("ws.allowed_origins"); len(origins) > 0 {
+			return origins
+		}
+	}
+
+	// Fall back to the environment variable directly to avoid the
+	// koanf underscore-to-dot mapping mismatch (NOTIFIER_WS_ALLOWED_ORIGINS
+	// maps to "ws.allowed.origins" in koanf, not "ws.allowed_origins").
+	if envVal := os.Getenv("NOTIFIER_WS_ALLOWED_ORIGINS"); envVal != "" {
+		var origins []string
+		for _, o := range strings.Split(envVal, ",") {
+			if trimmed := strings.TrimSpace(o); trimmed != "" {
+				origins = append(origins, trimmed)
+			}
+		}
+		if len(origins) > 0 {
+			return origins
+		}
+	}
+
+	return defaultOrigins
 }
