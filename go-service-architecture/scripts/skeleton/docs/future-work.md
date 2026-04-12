@@ -3,7 +3,7 @@
 Items identified during the skeleton app build that are out of scope
 for the initial implementation but worth revisiting.
 
-## Typography and Font Faces
+## #1 — Typography and Font Faces
 
 - Add `fontSans` and `fontMono` to `brand.json` as the single source
   of truth for typography across dashboard and email
@@ -17,7 +17,7 @@ for the initial implementation but worth revisiting.
 - Both the Maizzle `tailwind.config.js` and the dashboard `index.css`
   `@theme` block should consume the same font values from `brand.json`
 
-## Contrast and Accessibility
+## #2 — Contrast and Accessibility
 
 - Dark mode has contrast issues — dark text on dark backgrounds in
   several components. The brand palette (`#1a1a2e` primary, `#16213e`
@@ -25,15 +25,14 @@ for the initial implementation but worth revisiting.
   for all combinations
 - Add automated contrast testing to Storybook using the pattern from
   Scope's documentation repo: a custom test-runner that validates
-  WCAG 1.4.11 non-text contrast in both light and dark modes (see
-  `/home/kazw/Work/WorkFort/documentation/storybook/lit/.storybook/test-runner.ts`)
+  WCAG 1.4.11 non-text contrast in both light and dark modes
 - The `@storybook/addon-a11y` is already installed but only runs
   axe-core checks on individual stories. The Scope pattern goes
   further: it tests border contrast ratios for form inputs, buttons,
   checkboxes, and radio buttons against a 3:1 minimum
 - Run contrast checks in CI as part of `mise run ci`
 
-## StatusBadge Color Differentiation
+## #3 — StatusBadge Color Differentiation
 
 - `pending` and `sending` both use yellow — they should be visually
   distinct since they represent different stages
@@ -41,7 +40,7 @@ for the initial implementation but worth revisiting.
 - Final palette: pending=yellow, sending=purple, delivered=green,
   failed=red, not_sent=orange
 
-## Button Variants
+## #4 — Button Variants
 
 - Add color variants that match the status badge palette for
   visual consistency: success (green), warning (orange), info
@@ -49,7 +48,7 @@ for the initial implementation but worth revisiting.
 - The status badge colors and button colors should come from the same
   semantic token set so they're always in sync
 
-## Pagination Enhancement
+## #5 — Pagination Enhancement
 
 - Current pagination is Previous/Next only with no page context
 - Add page numbers and total page count (e.g., "Page 2 of 5")
@@ -64,7 +63,7 @@ for the initial implementation but worth revisiting.
 - Storybook story should show variants with many pages, single page,
   and current-page highlighting
 
-## @example.com Auto-Fail Should Be Dev/QA Only
+## #6 — @example.com Auto-Fail Should Be Dev/QA Only
 
 - The `@example.com` rejection is hardcoded in the SMTP sender with
   no build tag gating — production builds will also reject these
@@ -80,7 +79,7 @@ for the initial implementation but worth revisiting.
   QA build pattern and makes it impossible to accidentally enable
   simulated failures in production
 
-## QA Build: Console-Only Email, No Mailpit Required
+## #7 — QA Build: Console-Only Email, No Mailpit Required
 
 - QA builds should be fully standalone — no Mailpit, no SMTP server
 - Replace the SMTP sender with a console sender in QA builds that
@@ -93,7 +92,7 @@ for the initial implementation but worth revisiting.
 - This means QA testers and demos only need the single binary — no
   external dependencies at all
 
-## QA Build: Simulated Failure Domains
+## #8 — QA Build: Simulated Failure Domains
 
 - Extend the QA sender with a map of domain-based simulated behaviors
   gated by `//go:build qa`:
@@ -104,7 +103,7 @@ for the initial implementation but worth revisiting.
 - This lets QA exercise all state machine paths without a real SMTP
   server
 
-## Missing release:qa Mise Task
+## #9 — Missing release:qa Mise Task
 
 - There's no `release:qa` task — QA builds currently require manual
   `go build -tags spa,qa` which bypasses mise
@@ -113,7 +112,7 @@ for the initial implementation but worth revisiting.
   `release:production`
 - The architecture docs should mention all three release tasks
 
-## Security: MCP Error Information Leakage (HIGH)
+## #10 — Security: MCP Error Information Leakage (HIGH)
 
 - MCP tool handlers in `internal/infra/mcp/tools.go` expose raw
   `err.Error()` to clients (e.g., `"internal error: " + err.Error()`)
@@ -123,7 +122,7 @@ for the initial implementation but worth revisiting.
 - Fix: MCP tools should follow the same pattern as HTTP handlers —
   return a generic error message to the client, log the real error
 
-## Security: WebSocket Origin Validation (HIGH)
+## #11 — Security: WebSocket Origin Validation (HIGH)
 
 - `websocket.Accept(w, r, nil)` accepts connections from any origin
 - Any webpage on any domain can open a WebSocket and receive all
@@ -131,7 +130,7 @@ for the initial implementation but worth revisiting.
 - Fix: pass `&websocket.AcceptOptions{OriginPatterns: [...]}` with
   allowed origins
 
-## Security: WebSocket Read Size Limit (HIGH)
+## #12 — Security: WebSocket Read Size Limit (HIGH)
 
 - `ReadPump` calls `conn.Read(ctx)` without `conn.SetReadLimit()`
 - A malicious client can send arbitrarily large frames to exhaust
@@ -139,7 +138,7 @@ for the initial implementation but worth revisiting.
 - Since the server discards all incoming messages, set a small limit
   (e.g., 512 bytes)
 
-## Security: Request Body Size Limits (MEDIUM)
+## #13 — Security: Request Body Size Limits (MEDIUM)
 
 - POST endpoints (`/v1/notify`, `/v1/notify/reset`) do not use
   `http.MaxBytesReader` — a client can send a multi-gigabyte body
@@ -147,14 +146,14 @@ for the initial implementation but worth revisiting.
 - Fix: add `r.Body = http.MaxBytesReader(w, r.Body, 1<<20)` (1 MB)
   at the top of each POST handler
 
-## Security: WebSocket Connection Limit (MEDIUM)
+## #14 — Security: WebSocket Connection Limit (MEDIUM)
 
 - The hub accepts unlimited client registrations — a single attacker
   can open thousands of connections to exhaust file descriptors
 - Fix: track connection count in the hub's `Run` loop, reject
   registrations above a configurable limit (e.g., 1000)
 
-## Dashboard Table Border Styling
+## #15 — Dashboard Table Border Styling
 
 - Extra horizontal rule at the bottom of the table beneath the
   rounded border — looks like a double border
@@ -163,7 +162,7 @@ for the initial implementation but worth revisiting.
   row, or a table `border-collapse` issue conflicting with
   `rounded` corners
 
-## Empty State UX
+## #16 — Empty State UX
 
 - The empty dashboard just shows a blank table with headers — no
   indication that the empty state is intentional
@@ -172,7 +171,7 @@ for the initial implementation but worth revisiting.
 - This applies to both the live dashboard and the Empty Storybook
   story variant
 
-## Resend Button UX
+## #17 — Resend Button UX
 
 - Consider whether the resend button should appear on notifications
   in `not_sent` state that still have retries remaining. Currently
