@@ -167,3 +167,91 @@
 **Decision made:** The spec (service-build REQ-029) defines exactly three hardcoded domains. The map is a compile-time constant, not runtime-configurable. This matches the QA build tag philosophy: QA behaviors are baked into the binary, not configured at runtime.
 **Alternative interpretation:** The map could be loaded from a config file or extended via additional build-tagged files, allowing QA testers to add custom simulated domains without recompiling.
 **Impact if wrong:** If hardcoded and a QA tester needs a new simulated domain, they must modify source code and rebuild. If configurable, there is additional config surface area that could be misconfigured.
+
+## MCP Error Handling -- Which Errors Are "Safe" for Clients -- OPEN
+
+**Source says:** Future work item #10 says "MCP tools should follow the same pattern as HTTP handlers -- return a generic error message to the client, log the real error." The current code exposes `err.Error()` for CreateNotification, Enqueue, GetNotificationByEmail, state machine FireCtx, and UpdateNotification failures. However, it also returns domain validation errors (from `domain.ValidateEmail`) and domain sentinel texts (`"already notified"`, `"not found"`) directly to clients.
+**Ambiguity:** Should state machine errors from `sm.FireCtx` (e.g., "cannot transition from pending via reset") be treated as safe client-facing errors or internal errors? These errors reveal state machine internals but also tell the client why the operation failed. Similarly, the `"reset failed: "` prefix on state machine errors implies the operation type -- should the generic error for reset be `"internal error"` or `"reset failed"`?
+**Decision made:** The spec (mcp-integration REQ-014) treats all non-domain errors as internal. State machine `FireCtx` errors are classified as internal errors because they may contain implementation details about the state machine library. The client receives `"internal error"` and the real error is logged server-side. Domain sentinels (`ErrAlreadyNotified`, `ErrNotFound`) and validation errors remain client-facing (REQ-016).
+**Alternative interpretation:** State machine errors could be sanitized but still specific (e.g., `"reset not permitted from current state"`) to give the client actionable information without leaking internals.
+**Impact if wrong:** If state machine errors are hidden, MCP clients cannot distinguish "the notification is in a state that does not allow reset" from "the database is down." If exposed, state machine library internals (transition names, guard conditions) may leak.
+
+## WebSocket Connection Limit -- Rejection Behavior -- OPEN
+
+**Source says:** Future work item #14 says "track connection count in the hub's `Run` loop, reject registrations above a configurable limit (e.g., 1000)." The current hub registration is a channel send (`h.register <- c`) processed inside the `Run` loop.
+**Ambiguity:** What happens to the rejected client's WebSocket connection? The hub can close the send channel, but the underlying `*websocket.Conn` is owned by the HTTP handler goroutine (via `WritePump` and `ReadPump`). Closing the send channel causes `WritePump` to exit and close the connection, but `ReadPump` is blocking in the handler goroutine. Should the hub also close the WebSocket connection directly, or rely on the send channel closure to cascade through the pumps?
+**Decision made:** The spec (notification-realtime REQ-018) says the hub closes the rejected client's send channel. This causes `WritePump` to exit (it returns when the send channel is closed), which calls `conn.Close(websocket.StatusNormalClosure, ...)`. The `ReadPump` will then get a read error on the closed connection and exit. This matches the existing slow-client drop pattern (REQ-012) and avoids the hub directly touching the connection.
+**Alternative interpretation:** The hub could close the WebSocket connection with a specific close code (e.g., `websocket.StatusTryAgainLater` or `websocket.StatusPolicyViolation`) to give the client a clear signal that the server is at capacity. This would require the hub to access `client.Conn` directly.
+**Impact if wrong:** If the hub only closes the send channel but `WritePump` has not started yet (race between registration and goroutine scheduling), the connection could leak. If the hub closes the connection directly, it introduces a second closer for the same resource, risking a double-close panic.
+
+## WebSocket Connection Limit -- Configuration Mechanism -- OPEN
+
+**Source says:** Future work item #14 says "configurable limit (e.g., 1000)" but does not specify how the limit is configured.
+**Ambiguity:** How is the limit configured? Via koanf config file (`ws.max_connections`), an environment variable (`NOTIFIER_WS_MAX_CONNECTIONS`), a CLI flag, or a compile-time constant? The existing service uses koanf for config with env var overrides.
+**Decision made:** The spec (notification-realtime REQ-019) says the limit is passed to `NewHub(maxConns int)` at construction time, leaving the config source to the daemon wiring layer. The default is 1000.
+**Alternative interpretation:** The limit could be a top-level config field or a nested `ws.max_connections` field. It could also be a hard-coded constant if the value rarely changes.
+**Impact if wrong:** If the config path is wrong, the limit cannot be overridden at deploy time. If hard-coded, operators cannot adjust it without rebuilding.
+
+## MaxBytesReader Error Response Format -- OPEN
+
+**Source says:** Future work item #13 says "add `r.Body = http.MaxBytesReader(w, r.Body, 1<<20)` (1 MB) at the top of each POST handler." The Go standard library's `MaxBytesReader` causes `json.Decoder.Decode` to return a `*http.MaxBytesError` when the limit is exceeded.
+**Ambiguity:** What HTTP status code and response body should be returned when the body exceeds 1 MB? The `MaxBytesReader` itself does not write a response -- it causes the subsequent `json.NewDecoder(r.Body).Decode()` to fail. The existing error handling for decode failures returns `400 Bad Request` with `{"error": "invalid JSON body"}`. Should the oversized body produce the same 400 with the same message, a 400 with a different message (e.g., `"request body too large"`), or HTTP 413 Request Entity Too Large?
+**Decision made:** The spec says HTTP 400 Bad Request. Since `MaxBytesReader` is applied before `json.Decode`, the decode call will fail with a `MaxBytesError`, which falls through to the existing `"invalid JSON body"` error path. This is acceptable for the initial fix -- the body is invalid from the decoder's perspective. A follow-up could check for `*http.MaxBytesError` specifically and return 413.
+**Alternative interpretation:** HTTP 413 Request Entity Too Large is the semantically correct status code for this case. The handler could check `errors.As(err, &maxBytesErr)` before falling through to the generic decode error.
+**Impact if wrong:** Clients receiving 400 instead of 413 cannot distinguish "malformed JSON" from "body too large." This matters for clients that want to retry with a smaller payload. However, for this service (where the only POST body is a small JSON with an email field), the distinction is unlikely to matter in practice.
+
+## WebSocket Origin Validation -- Default Origin Pattern -- OPEN
+
+**Source says:** Future work item #11 says "pass `&websocket.AcceptOptions{OriginPatterns: [...]}` with allowed origins" but does not specify what the default allowed origins should be or what happens when no origins are configured.
+**Ambiguity:** What is the safe default when the operator does not configure `ws.allowed-origins`? Options: (a) reject all connections (secure but breaks out-of-the-box development), (b) allow `localhost:*` (permits local dev, rejects cross-origin in production), (c) allow all origins (insecure, equivalent to current behavior).
+**Decision made:** Default to `["localhost:*"]`. This permits the development workflow (dashboard at `localhost:8080` connecting to the WebSocket) without explicit configuration, while rejecting connections from non-localhost origins in production deployments that neglect to configure origins.
+**Alternative interpretation:** The default could be an empty list that rejects all WebSocket connections until the operator explicitly configures origins. This is more secure but breaks the zero-configuration development experience that the service currently provides.
+**Impact if wrong:** If the default is too permissive (e.g., allow all), the fix provides no protection unless the operator actively configures it, which defeats the purpose. If the default is too restrictive (reject all), developers must add configuration before WebSocket works at all, which is a regression in developer experience.
+
+## WebSocket Origin Validation -- Configuration Key Format for List Values -- OPEN
+
+**Source says:** The existing koanf configuration uses `env.Provider("NOTIFIER_", ".", ...)` which converts `NOTIFIER_WS_ALLOWED_ORIGINS` to the koanf key `ws.allowed.origins` (underscores become dots). The YAML config would use a list: `ws:\n  allowed-origins:\n    - "localhost:*"`.
+**Ambiguity:** How does a list value work through the environment variable override? Koanf's env provider treats env var values as strings, not lists. `NOTIFIER_WS_ALLOWED_ORIGINS=localhost:*,example.com` would need custom parsing (e.g., comma-separated splitting). Additionally, the underscore-to-dot conversion produces `ws.allowed.origins` (three levels deep) but the YAML key `allowed-origins` is a single hyphenated key at the second level, producing `ws.allowed-origins`. These do not match.
+**Decision made:** The spec uses `ws.allowed-origins` as the configuration key. The implementer must resolve the koanf key mapping so that both the YAML key and the environment variable resolve to the same configuration path. For the environment variable, comma-separated values split into a list is the conventional approach.
+**Alternative interpretation:** The config key could be `ws.origins` (simpler, avoids the hyphen-vs-dot mapping issue). Or the environment variable could use a different separator (semicolon, space) or a JSON-encoded list.
+**Impact if wrong:** If the YAML key and env var resolve to different koanf paths, the env var override silently fails -- the operator thinks they configured origins via environment but the code reads the YAML default. This would leave the WebSocket endpoint unprotected in container deployments that rely on env vars.
+
+## WebSocket Origin Validation -- 127.0.0.1 vs localhost in Test Environments -- OPEN
+
+**Source says:** The existing handler tests use `httptest.NewServer` which binds to `127.0.0.1` with a random port. The `coder/websocket` library checks the `Origin` header against `OriginPatterns`.
+**Ambiguity:** Does `localhost:*` match connections where the `Origin` header is `http://127.0.0.1:<port>`? The `coder/websocket` library may treat `localhost` and `127.0.0.1` as distinct hostnames. If so, tests using `httptest.NewServer` would fail with `["localhost:*"]` as the allowed origins.
+**Decision made:** The spec does not mandate whether `localhost` and `127.0.0.1` are treated as equivalent -- it defers to the `coder/websocket` library's pattern matching semantics (REQ-023). The implementer must verify behavior against the library and adjust test origin patterns accordingly (e.g., `["localhost:*", "127.0.0.1:*"]` if they are distinct).
+**Alternative interpretation:** The default could include both `localhost:*` and `127.0.0.1:*` to cover both cases. This is slightly more permissive but avoids a subtle test-vs-production discrepancy.
+**Impact if wrong:** If `localhost:*` does not match `127.0.0.1`, all existing handler tests break after the change. If the default includes `127.0.0.1:*`, it is slightly more permissive than intended but unlikely to be exploitable since `127.0.0.1` is a loopback address.
+
+## Semantic Token CSS Architecture -- RESOLVED
+
+**Source says:** Future work #4 states "The status badge colors and button colors should come from the same semantic token set so they're always in sync."
+**Ambiguity:** The mechanism for sharing tokens is unspecified. Options include: (a) CSS custom properties in `@theme` with `.dark` overrides, (b) a separate `tokens.css` file imported by both components, (c) Tailwind plugin that reads brand.json directly.
+**Decision made:** CSS custom properties declared in the `@theme` block of `index.css` with dark mode overrides in a `.dark` selector. This is the simplest approach that works with Tailwind v4's CSS-first configuration and requires no additional build tooling.
+**Alternative interpretation:** A Tailwind plugin or separate tokens file could provide more structured token management.
+**Impact if wrong:** If a plugin approach is preferred, the `index.css` changes would need to be moved to a plugin file. The token names and values would remain the same.
+
+## Button Variant Hover States -- RESOLVED
+
+**Source says:** Future work #4 mentions button color variants but does not specify hover behavior.
+**Ambiguity:** How should semantic-colored button hover states work? Options: (a) darken background via Tailwind opacity modifier (e.g., `hover:bg-semantic-success-bg/80`), (b) a dedicated hover token in brand.json, (c) use `filter: brightness()`.
+**Decision made:** Use a slightly more opaque/saturated background via a dedicated `hover` sub-key would add complexity. Instead, semantic button variants use the semantic text color as the background and white text, with a hover state that applies opacity. This provides strong contrast and clear affordance as interactive elements, while badges use the light background/dark text pattern for non-interactive display.
+**Alternative interpretation:** Each semantic color could have a dedicated hover background color defined in brand.json.
+**Impact if wrong:** If dedicated hover colors are preferred, brand.json would need additional keys and the CSS custom properties would need corresponding hover variants. Visual difference would be subtle.
+
+## Neutral vs Yellow Naming -- RESOLVED
+
+**Source says:** Future work #3 specifies `pending=yellow`. The semantic token system uses semantic names.
+**Ambiguity:** Should the yellow semantic token be called `neutral` (semantic meaning) or `yellow` (visual description)? Components map `pending` -> `neutral`, which is one more level of indirection.
+**Decision made:** Use `neutral` as the semantic name. The token name describes intent, not color. This allows the actual color to change without renaming the token.
+**Alternative interpretation:** Use `caution` or `pending` as the semantic name to be more descriptive of the use case.
+**Impact if wrong:** Only naming. Functionally identical. A rename would require updating CSS properties and component class references.
+
+## Font Stack Runtime Behavior -- RESOLVED
+
+**Source says:** Future work #1 mentions "Inter" and "JetBrains Mono" specifically but notes "web fonts are unreliable in email clients."
+**Ambiguity:** Should the dashboard load Inter and JetBrains Mono via `@font-face` or Google Fonts, or rely purely on the fallback stack?
+**Decision made:** The font stacks include these as first-choice fonts but no `@font-face` or CDN import is added. Users with these fonts installed locally will see them; others get `ui-sans-serif` / `ui-monospace` fallbacks. Email always uses the fallback stack.
+**Alternative interpretation:** A `@font-face` declaration or Google Fonts `<link>` could ensure consistent rendering.
+**Impact if wrong:** If web font loading is expected, a font loading strategy would need to be added to `index.html`. This is additive and does not affect the token architecture.
