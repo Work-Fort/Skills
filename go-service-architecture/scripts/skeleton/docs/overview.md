@@ -43,14 +43,19 @@ any terminal → pending         (manual reset via /v1/notify/reset)
 ### Business Rules
 
 - Each email address can only be notified once. A second attempt
-  returns `409 Conflict`.
+  returns `409 Conflict` (`ErrAlreadyNotified`).
 - Emails to `@example.com` automatically fail — simulating an
   undeliverable address without needing a real mail server.
 - A reset endpoint clears the notification record, allowing the
-  address to be notified again.
+  address to be notified again. Returns `404` (`ErrNotFound`) if
+  no notification exists for that email.
 - Email sending has a 6-second artificial delay to simulate real
   delivery latency. This makes the `pending → sending → delivered`
   state transitions visible in the dashboard in real time.
+- Email addresses are validated for format before accepting. Invalid
+  addresses return `422 Unprocessable Entity`.
+- Every notification gets a prefixed UUID (`ntf_<uuid>`) generated
+  at the infra layer.
 
 ### Branding and Design
 
@@ -73,6 +78,11 @@ in a real system.
 | Notify endpoint | REST API (huma) | Any API that accepts requests — order placement, user registration, webhook receivers |
 | Email templates | `html/template` + go-premailer | Transactional email — password resets, order confirmations, onboarding sequences |
 | SMTP sending | go-mail adapter | Email delivery — notifications, alerts, reports, marketing automation |
+| Request ID propagation | UUID in context + email headers | Distributed tracing — correlating logs, API responses, and emails back to the originating request |
+| Structured logging | `log/slog` with JSON output | Observability — structured log queries, request correlation, production debugging |
+| ID generation | `google/uuid` with prefix (`ntf_`) | Entity identification — prefixed UUIDs for type-safe, human-readable IDs |
+| Input validation | Email format check | Data integrity — rejecting bad input at the boundary before it enters the domain |
+| Error sentinels | `ErrAlreadyNotified`, `ErrNotFound` | Domain errors — typed errors mapped to HTTP status codes at the handler layer |
 | Background queue | goqite | Async processing — payment processing, image resizing, report generation, webhook delivery |
 | State machine | stateless | Lifecycle tracking — order fulfillment, approval workflows, incident management, deployment pipelines |
 | Paginated list endpoint | Cursor-based pagination | Large datasets — paginating API results, infinite scroll, batch processing, export |
@@ -137,6 +147,7 @@ demonstrating hexagonal architecture's interface independence.
 | POST | `/v1/notify/reset` | Reset a notification record for re-sending |
 | GET | `/v1/notifications` | List all notifications with state |
 | GET | `/v1/health` | Health check (database ping) |
+| GET | `/v1/ws` | WebSocket — real-time notification state updates |
 | * | `/` | React SPA dashboard (when built with `-tags spa`) |
 | * | `/mcp` | MCP streamable HTTP endpoint |
 
@@ -184,8 +195,10 @@ testable functionality:
 
 | Step | Plan | Delivers |
 |------|------|----------|
-| 1 | Foundation | Project layout, domain types, CLI, config, SQLite store, health endpoint, mise tasks, Dockerfile |
-| 2 | Notification delivery | Notify endpoint, email templates, goqite queue, SMTP adapter, Mailpit E2E tests |
-| 3 | State machine | Stateless integration, transitions, audit log, @example.com auto-fail |
-| 4 | Reset and admin | Reset endpoint, notifications list, MCP tools, MCP bridge |
-| 5 | Frontend | React SPA, Vite setup, embed, dev proxy, dashboard UI |
+| 1 | Foundation | Project layout, domain types, error sentinels, CLI, config, SQLite store, health endpoint, structured logging, request ID middleware, mise tasks, Dockerfile |
+| 2 | Notification delivery | Notify endpoint, input validation, email templates with brand styling, goqite queue, SMTP adapter, 6-second delay, Mailpit E2E tests |
+| 3 | State machine | Stateless integration, state transitions, retry count/limit, not_sent soft-fail, audit log, @example.com auto-fail |
+| 4 | Reset and list | Reset endpoint, paginated notifications list, PostgreSQL store |
+| 5 | MCP and WebSocket | MCP tools (1:1 with REST), MCP bridge, WebSocket endpoint for live updates |
+| 6 | Frontend | React SPA, Tailwind + dark mode, Vite setup, embed, dev proxy, dashboard with WebSocket, resend button |
+| 7 | QA build and E2E | QA build tag, seed data, E2E test suite with QA build + Mailpit |
