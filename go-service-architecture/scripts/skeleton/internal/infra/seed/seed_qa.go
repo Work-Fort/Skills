@@ -38,23 +38,24 @@ var seedJobs = []struct {
 	{"ntf_seed-006", "retry@company.com", "req_seed-006"},
 }
 
-// RunSeed executes the embedded seed SQL and enqueues delivery jobs
-// programmatically via jobs.Create(). Called on startup when built
-// with -tags qa.
-func RunSeed(db *sql.DB) error {
-	// Insert notification rows and audit log entries via SQL.
+// RunSeed executes the embedded seed SQL and enqueues delivery jobs.
+// The sqlFlavor parameter selects the goqite SQL dialect (0 for SQLite,
+// use goqite.SQLFlavorPostgreSQL for PostgreSQL).
+func RunSeed(db *sql.DB, sqlFlavor ...goqite.SQLFlavor) error {
 	if _, err := db.Exec(string(seedSQL)); err != nil {
 		return fmt.Errorf("run seed sql: %w", err)
 	}
 
-	// Enqueue delivery jobs via jobs.Create() so the gob-encoded
-	// envelope format matches what the Runner expects.
-	q := goqite.New(goqite.NewOpts{
+	opts := goqite.NewOpts{
 		DB:         db,
 		Name:       "notifications",
 		MaxReceive: 8,
 		Timeout:    30 * time.Second,
-	})
+	}
+	if len(sqlFlavor) > 0 {
+		opts.SQLFlavor = sqlFlavor[0]
+	}
+	q := goqite.New(opts)
 
 	ctx := context.Background()
 	for _, sj := range seedJobs {
