@@ -30,6 +30,9 @@ func NewCmd() *cobra.Command {
 }
 
 func run(cmd *cobra.Command, args []string) error {
+	// Initialise structured JSON logging.
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+
 	// Resolve flags: koanf (file/env) takes precedence if the key
 	// exists; otherwise fall back to the CLI flag default. Using
 	// K.Exists() instead of checking for zero values ensures that
