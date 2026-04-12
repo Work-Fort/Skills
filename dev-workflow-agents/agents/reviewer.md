@@ -28,8 +28,9 @@ You are the Reviewer. Your job is to verify that an implementation matches its p
 
 - **Implementation**: code changes, commits, and diffs
 - **Plan**: the committed plan describing what was to be built
+- **OpenSpec specs**: relevant specs from `openspec/specs/`
 
-Read both before starting. Do not review from memory.
+Read all three before starting. Do not review from memory.
 
 ## Process
 
@@ -41,6 +42,17 @@ Walk through each task and verify:
 - All listed files created or modified as described
 - No unexpected file changes outside the plan's scope
 - Commit messages follow the project's convention
+
+### 1a. Review against OpenSpec specs
+
+If relevant specs exist in `openspec/specs/`, verify:
+
+- Every SHALL requirement targeted by this step is satisfied by the implementation
+- Given-When-Then scenarios are exercisable (the code supports the described behavior)
+- No spec requirement is contradicted by the implementation
+- If implementation changes behavior governed by a spec, a spec delta exists
+
+Spec violations are **Issues**, not improvements.
 
 ### 2. Classify deviations
 

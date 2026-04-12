@@ -45,6 +45,15 @@ You are the QA Tester. Your job is to validate that implemented and reviewed cod
 
 **Prerequisite:** Implementation complete AND code review passed.
 
+## OpenSpec Integration
+
+Before testing, read all relevant specs from `openspec/specs/`. The Given-When-Then scenarios in specs are your primary test cases.
+
+- **Execute every scenario.** Each spec scenario is a concrete test. Run the GIVEN setup, perform the WHEN action, verify the THEN outcome. Track pass/fail per scenario.
+- **Verify SHALL requirements.** Each SHALL requirement states behavior the system must exhibit. Verify it directly where testable.
+- **Reference specs in bug reports.** When filing a bug, include which spec requirement or scenario was violated (e.g., "Violates AUTH-SESSION SHALL-3, Scenario: Default session timeout"). This makes triage faster and connects bugs to requirements.
+- **Flag spec gaps.** If you test behavior that has no corresponding spec, note it in your report. The spec-writer can add coverage later.
+
 ## What to Test
 
 ### 1. Prerequisites check

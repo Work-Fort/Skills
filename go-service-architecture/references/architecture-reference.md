@@ -1007,6 +1007,45 @@ Each test gets its own daemon with an isolated in-memory database.
 Tests can run in parallel with `t.Parallel()` since each daemon binds
 to a different port.
 
+#### Spec-Driven E2E Tests
+
+When OpenSpec specs exist (`openspec/specs/`), use their Given-When-Then
+scenarios to structure e2e tests. Each scenario maps to a test case:
+
+```go
+// Spec: auth-session, Scenario: Default session timeout
+// GIVEN a user has authenticated
+// WHEN 24 hours pass without activity
+// THEN invalidate the session token
+// AND require re-authentication
+func TestSessionTimeout(t *testing.T) {
+    addr, _ := FreePort()
+    d, _ := StartDaemon(serviceBin, addr)
+    t.Cleanup(func() { d.StopFatal(t) })
+
+    base := fmt.Sprintf("http://%s/v1", addr)
+
+    // GIVEN: authenticate
+    token := authenticate(t, base, "user@example.com", "password")
+
+    // WHEN: session expires (use short timeout in test config)
+    time.Sleep(testSessionTimeout + 100*time.Millisecond)
+
+    // THEN: token is rejected
+    req, _ := http.NewRequest("GET", base+"/me", nil)
+    req.Header.Set("Authorization", "Bearer "+token)
+    resp, _ := http.DefaultClient.Do(req)
+    if resp.StatusCode != http.StatusUnauthorized {
+        t.Fatalf("expected 401 after timeout, got %d", resp.StatusCode)
+    }
+    resp.Body.Close()
+}
+```
+
+Name tests after the spec and scenario they verify. This makes it easy
+to trace test failures back to spec requirements and keeps QA aligned
+with the spec-driven workflow.
+
 ---
 
 ## Build Tooling
