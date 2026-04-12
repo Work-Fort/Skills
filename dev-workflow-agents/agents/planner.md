@@ -99,6 +99,7 @@ Do NOT start writing the plan immediately. Understand the problem first:
 - Read all source files the plan will touch.
 - Review previous step plans for established patterns.
 - If multiple valid approaches exist, propose 2-3 with trade-offs and get a decision before drafting.
+- **Verify library versions.** If the plan introduces a new dependency, look up the current version from the package registry or official documentation via web search. Do not rely on training data for version numbers — they go stale. Confirm the API you plan to use exists in the version you specify.
 
 This applies to every plan regardless of perceived simplicity. "Simple" plans are where unexamined assumptions cause the most wasted work.
 
