@@ -14,6 +14,9 @@ function App() {
     hasPrevious,
     goNext,
     goPrevious,
+    goToPage,
+    currentPage,
+    totalPages,
     resend,
     resending,
   } = useNotifications()
@@ -103,6 +106,9 @@ function App() {
               hasNext={hasNext}
               onPrevious={goPrevious}
               onNext={goNext}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={goToPage}
             />
           </>
         )}

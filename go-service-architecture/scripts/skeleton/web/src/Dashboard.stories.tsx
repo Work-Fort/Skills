@@ -118,6 +118,9 @@ function DashboardLayout({
           hasNext={true}
           onPrevious={() => {}}
           onNext={() => {}}
+          currentPage={1}
+          totalPages={3}
+          onPageChange={() => {}}
         />
       </main>
     </div>
