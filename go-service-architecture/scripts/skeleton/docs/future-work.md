@@ -181,3 +181,25 @@ for the initial implementation but worth revisiting.
 - Options: only show resend after retries are exhausted (retry_count
   >= retry_limit), or show it always but with a tooltip explaining
   that auto-retry is in progress
+
+## #18 — Silent Error on Startup
+
+- `SilenceErrors: true` in cobra root command combined with
+  `os.Exit(1)` swallows all startup errors — user sees no output
+- Need to print the error to stderr before exiting
+
+## #19 — QA Seed Data Not Idempotent
+
+- Re-running the QA binary on an existing database fails with
+  `UNIQUE constraint failed: notifications.email`
+- Seed SQL should use `INSERT OR IGNORE` or check for existing
+  records before inserting
+
+## #20 — Table Layout Shift on Resend Click
+
+- Clicking the Resend button causes the entire table to shift
+  slightly to the left
+- Likely caused by the button text changing to "Resending..." which
+  has a different width, or a scrollbar appearing/disappearing
+- Fix: set a fixed `min-width` on the Actions column or the Resend
+  button to prevent layout reflow
