@@ -108,6 +108,27 @@ For every binary or tool the plan depends on:
 - Uses project test conventions
 - Integration tests where components cross boundaries
 
+### 8a. Assess test coverage adequacy
+
+This is a critical check. Plans with insufficient test coverage are
+a **MUST FIX**. Verify:
+
+- **Every new feature has E2E tests** (if an E2E suite exists).
+  Not just the happy path — test the full lifecycle including
+  reset, retry, background job processing, and error paths.
+- **State transitions have integration tests** against real storage,
+  not just unit tests with stubs. Stubs can hide bugs (e.g., shared
+  pointers vs copies).
+- **Async flows are tested end-to-end.** If the plan adds a
+  background job, there must be a test that verifies the job is
+  enqueued, picked up by the worker, and the final state is correct.
+- **Test stubs match real DB behavior.** If the store returns
+  pointers, stubs must return copies to prevent bugs hiding behind
+  shared memory. Flag stubs that return the same pointer the caller
+  holds.
+- Missing E2E or integration tests for a new feature is **MUST FIX**,
+  not SHOULD FIX.
+
 ### 9. Assess build system
 
 - Configuration changes are correct

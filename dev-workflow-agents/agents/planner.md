@@ -118,6 +118,15 @@ Key principles:
 - Use project task runner (e.g., `mise run`) for all commands
 - Include full code — the developer should not invent details
 - DRY, YAGNI — no speculative abstractions
+- **Every feature must have tests that prove it works end-to-end.**
+  Plans must include:
+  - Unit tests for domain logic and handlers
+  - Integration tests against real storage (not just stubs)
+  - E2E tests for user-facing workflows (if E2E suite exists)
+  - Test stubs must match real DB behavior (return copies, not
+    shared pointers) to prevent bugs hiding in tests
+  - State transitions, background jobs, and async flows must have
+    tests that verify the full lifecycle, not just the trigger
 
 ### Task Structure
 
