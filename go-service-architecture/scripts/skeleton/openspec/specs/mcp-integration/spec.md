@@ -31,6 +31,7 @@ Exposes the notification service's domain logic through the Model Context Protoc
 
 - REQ-017: The `reset_notification` MCP tool SHALL reject reset requests for notifications in `not_sent` state when `retry_count < retry_limit` (auto-retry still in progress). The tool SHALL return a `gomcp.NewToolResultError` with the message `"notification has retries remaining"`. This mirrors the HTTP 409 Conflict behavior of `POST /v1/notify/reset`.
 - REQ-018: The `reset_notification` MCP tool SHALL allow resets for `not_sent` notifications when `retry_count >= retry_limit`, and SHALL always allow resets for `failed` and `delivered` notifications.
+- REQ-019: After a successful reset, the `reset_notification` MCP tool SHALL enqueue a new delivery job via the background queue so the worker picks up the notification and re-attempts delivery. This mirrors the REST `POST /v1/notify/reset` behavior (notification-management REQ-007).
 
 ### MCP Bridge
 
@@ -93,6 +94,7 @@ Exposes the notification service's domain logic through the Model Context Protoc
 - **When** the `reset_notification` MCP tool is called with `{"email": "user@company.com"}`
 - **Then** the notification state SHALL be `pending`
 - **And** the `retry_count` SHALL be 0
+- **And** a delivery job SHALL be enqueued via the background queue
 
 ### Scenario: MCP duplicate prevention matches REST
 

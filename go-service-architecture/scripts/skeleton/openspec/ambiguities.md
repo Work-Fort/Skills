@@ -359,3 +359,11 @@
 **Decision made:** This is a safe domain error. The message `"notification has retries remaining"` contains no sensitive information and is useful for the caller. It follows the same pattern as `"already notified"` and `"not found"`. Both the REST and MCP specs specify the exact message to return to the client.
 **Alternative interpretation:** The error could be classified as internal since it relates to server-side retry state.
 **Impact if wrong:** If classified as internal, the MCP tool would return the unhelpful `"internal error"` message, and the frontend would not be able to distinguish "retries remaining" from a real server failure.
+
+## Reset Endpoint -- Enqueue Delivery Job After Reset -- OPEN
+
+**Source says:** The reset endpoint (`POST /v1/notify/reset`) transitions the notification to `pending` state, clears retry count and timestamps, and returns HTTP 204. The code in `reset.go` does not enqueue a delivery job after the state transition. The `POST /v1/notify` (send) endpoint enqueues a job, but after a reset, the notification already exists so `POST /v1/notify` returns 409 (duplicate).
+**Ambiguity:** Should the reset endpoint enqueue a delivery job itself, or should the caller be expected to trigger delivery through some other mechanism? Without enqueuing, the notification sits in `pending` state indefinitely with no worker to pick it up.
+**Decision made:** The reset endpoint SHALL enqueue a new delivery job after successfully transitioning to `pending` (notification-management REQ-007, mcp-integration REQ-019). This matches the intent of "reset for re-delivery" -- a reset that does not re-deliver is operationally useless. The `reset.go` handler needs to accept a `domain.Enqueuer` (or equivalent queue port) and call it after the state transition and field reset.
+**Alternative interpretation:** The reset could only transition state, and the caller would need to use a separate "re-send" endpoint or manually trigger delivery. This would give the caller more control but adds an extra step that is easy to forget.
+**Impact if wrong:** If the reset does not enqueue, every reset leaves the notification stranded in `pending` forever. The dashboard shows "pending" but nothing happens. Users must know to call a second endpoint to actually trigger delivery, which is unintuitive and error-prone.

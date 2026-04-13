@@ -14,7 +14,7 @@ Provides the reset endpoint for re-sending notifications, the paginated list end
 - REQ-004: On successful reset, the notification record SHALL have its `retry_count` cleared to 0.
 - REQ-005: On successful reset, the notification record SHALL have its delivery results cleared.
 - REQ-006: On successful reset, the notification record SHALL have its timestamp fields (other than `created_at`) reset.
-- REQ-007: After a successful reset, the email address SHALL be eligible for re-notification via `POST /v1/notify`.
+- REQ-007: After a successful reset, the endpoint SHALL enqueue a new delivery job via the background queue so the worker picks up the notification and re-attempts delivery. The notification SHALL NOT remain in `pending` state without a corresponding queued job.
 - REQ-007a: On successful reset, the endpoint SHALL return HTTP 204 No Content with an empty response body.
 
 ### List Endpoint
@@ -59,6 +59,7 @@ Provides the reset endpoint for re-sending notifications, the paginated list end
 - **Then** the system SHALL return HTTP 204 No Content with an empty body
 - **And** the notification state SHALL be `pending`
 - **And** the `retry_count` SHALL be 0
+- **And** a delivery job SHALL be enqueued via the background queue
 
 ### Scenario: Reset rejected for not_sent notification with retries remaining
 
@@ -76,6 +77,7 @@ Provides the reset endpoint for re-sending notifications, the paginated list end
 - **Then** the system SHALL return HTTP 204 No Content with an empty body
 - **And** the notification state SHALL be `pending`
 - **And** the `retry_count` SHALL be 0
+- **And** a delivery job SHALL be enqueued via the background queue
 
 ### Scenario: Reset a non-existent notification
 
@@ -85,10 +87,10 @@ Provides the reset endpoint for re-sending notifications, the paginated list end
 
 ### Scenario: Re-notify after reset
 
-- **Given** a notification for `user@company.com` was delivered and then reset
-- **When** a POST request is sent to `/v1/notify` with `{"email": "user@company.com"}`
-- **Then** the system SHALL return HTTP 202
-- **And** a new email delivery job SHALL be enqueued
+- **Given** a notification for `user@company.com` was delivered and then reset (which enqueued a delivery job)
+- **When** the background worker processes the enqueued job
+- **Then** the notification SHALL transition through the delivery state machine (pending -> sending -> delivered/not_sent)
+- **And** a separate `POST /v1/notify` for the same email SHALL return HTTP 409 because the notification already exists
 
 ### Scenario: List notifications with pagination
 
