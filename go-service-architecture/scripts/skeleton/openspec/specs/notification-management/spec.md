@@ -38,6 +38,12 @@ Provides the reset endpoint for re-sending notifications, the paginated list end
 - REQ-021: The list handler SHALL call `CountNotifications` in addition to `ListNotifications` and include the result as `meta.total_count` in the response. `meta.total_pages` SHALL be computed as `ceil(total_count / limit)`.
 - REQ-022: When `total_count` is 0, `total_pages` SHALL be 0.
 
+### Reset Guard for In-Progress Retries
+
+- REQ-023: When the notification is in `not_sent` state and `retry_count < retry_limit` (auto-retry is still in progress), the reset endpoint SHALL return HTTP 409 Conflict with a JSON error body containing the message `"notification has retries remaining"`. The notification state SHALL NOT change.
+- REQ-024: When the notification is in `not_sent` state and `retry_count >= retry_limit` (retries exhausted), the reset endpoint SHALL allow the reset (same behavior as `failed` or `delivered`).
+- REQ-025: For notifications in `failed` or `delivered` state, the reset endpoint SHALL allow the reset regardless of `retry_count`.
+
 ### REST Framework
 
 - REQ-016: REST endpoints (except health) SHALL be registered using the `huma` framework via `humago.New` and `huma.Register`.
@@ -49,6 +55,23 @@ Provides the reset endpoint for re-sending notifications, the paginated list end
 ### Scenario: Reset a delivered notification
 
 - **Given** a notification for `user@company.com` exists with state `delivered`
+- **When** a POST request is sent to `/v1/notify/reset` with `{"email": "user@company.com"}`
+- **Then** the system SHALL return HTTP 204 No Content with an empty body
+- **And** the notification state SHALL be `pending`
+- **And** the `retry_count` SHALL be 0
+
+### Scenario: Reset rejected for not_sent notification with retries remaining
+
+- **Given** a notification for `user@company.com` exists with state `not_sent`, `retry_count` of 1, and `retry_limit` of 3
+- **When** a POST request is sent to `/v1/notify/reset` with `{"email": "user@company.com"}`
+- **Then** the system SHALL return HTTP 409 Conflict
+- **And** the response body SHALL contain `"notification has retries remaining"`
+- **And** the notification state SHALL remain `not_sent`
+- **And** the `retry_count` SHALL remain 1
+
+### Scenario: Reset allowed for not_sent notification with retries exhausted
+
+- **Given** a notification for `user@company.com` exists with state `not_sent`, `retry_count` of 3, and `retry_limit` of 3
 - **When** a POST request is sent to `/v1/notify/reset` with `{"email": "user@company.com"}`
 - **Then** the system SHALL return HTTP 204 No Content with an empty body
 - **And** the notification state SHALL be `pending`

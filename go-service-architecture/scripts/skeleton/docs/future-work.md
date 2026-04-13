@@ -171,7 +171,7 @@ for the initial implementation but worth revisiting.
 - This applies to both the live dashboard and the Empty Storybook
   story variant
 
-## #17 — Resend Button UX
+## #17 — Resend Button UX ✅
 
 - Consider whether the resend button should appear on notifications
   in `not_sent` state that still have retries remaining. Currently

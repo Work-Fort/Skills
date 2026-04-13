@@ -123,6 +123,13 @@ Provides a React SPA dashboard embedded in the Go binary for monitoring notifica
 - REQ-061: Interactive buttons whose visible text changes between states (e.g., "Resend" / "Resending...") SHALL have a stable rendered width that does not change when the text changes. The button SHALL use a CSS `min-width` (or equivalent constraint) that accommodates the widest text variant, preventing table column resize and layout shift on state change.
 - REQ-062: The Resend button in `NotificationRow` SHALL have a `min-width` that accommodates the "Resending..." label so that switching between "Resend" and "Resending..." does not cause the Actions column or the table to reflow.
 
+### Resend Button Visibility
+
+- REQ-064: For notifications in `failed` state, the Resend button SHALL always be visible and enabled (clickable). The `failed` state has no auto-retry mechanism.
+- REQ-065: For notifications in `not_sent` state where `retry_count < retry_limit` (auto-retry still in progress), the Resend button SHALL be visible but disabled (not clickable). The button SHALL appear with a disabled visual treatment (e.g., reduced opacity, `cursor-not-allowed`).
+- REQ-066: For notifications in `not_sent` state where `retry_count >= retry_limit` (retries exhausted), the Resend button SHALL be visible and enabled (clickable).
+- REQ-067: The `NotificationRow` component SHALL determine button disabled state by evaluating both the `resending` prop (HTTP request in flight) and the auto-retry condition (`status === 'not_sent' && retry_count < retry_limit`). The button SHALL be disabled if either condition is true.
+
 ### Resend Race Condition
 
 - REQ-063: When the `useNotifications` hook receives a WebSocket update that changes a notification's state to a non-resendable state (`pending`, `sending`, or `delivered`), it SHALL immediately remove that notification's ID from the `resending` Set, regardless of whether the resend HTTP request has completed. This prevents a render frame where the button is simultaneously disabled (resending in progress) and absent (state no longer resendable).
@@ -321,6 +328,28 @@ Provides a React SPA dashboard embedded in the Go binary for monitoring notifica
 - **Given** `Pagination.stories.tsx` is loaded in Storybook
 - **When** the stories list is displayed
 - **Then** stories SHALL exist for: `ManyPages`, `SinglePage`, `FirstPage`, `LastPage`, and `FewPages`
+
+### Scenario: Resend button disabled during auto-retry for not_sent
+
+- **Given** a notification with status `not_sent`, `retry_count` of 1, and `retry_limit` of 3
+- **When** the `NotificationRow` component renders
+- **Then** the Resend button SHALL be visible
+- **And** the Resend button SHALL be disabled (not clickable)
+- **And** the button SHALL have a disabled visual treatment (reduced opacity, `cursor-not-allowed`)
+
+### Scenario: Resend button enabled when retries exhausted for not_sent
+
+- **Given** a notification with status `not_sent`, `retry_count` of 3, and `retry_limit` of 3
+- **When** the `NotificationRow` component renders
+- **Then** the Resend button SHALL be visible
+- **And** the Resend button SHALL be enabled (clickable)
+
+### Scenario: Resend button always enabled for failed status
+
+- **Given** a notification with status `failed`, `retry_count` of 0, and `retry_limit` of 3
+- **When** the `NotificationRow` component renders
+- **Then** the Resend button SHALL be visible and enabled
+- **And** the button SHALL NOT be disabled regardless of retry_count or retry_limit values
 
 ### Scenario: WebSocket update clears resending state for non-resendable transition
 

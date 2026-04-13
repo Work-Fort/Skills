@@ -343,3 +343,19 @@
 **Decision made:** The spec (REQ-061, REQ-062) requires `min-width` on the button. This is the minimal fix that addresses the root cause (button text width change) without over-constraining the column. The exact pixel or rem value is left to the implementer -- it must accommodate "Resending..." which is the widest label.
 **Alternative interpretation:** A fixed `min-width` or `w-*` class on the Actions `<td>` or `<th>` would prevent any future layout shift from that column, but it would waste horizontal space when the column content is narrow (e.g., when no Resend button is shown for delivered notifications).
 **Impact if wrong:** If the column-level approach is preferred, the button-level `min-width` would still work but would not protect against other future content changes in the Actions column. If neither is applied, the table shifts on every Resend click.
+
+## Reset Guard -- Where to Enforce the Retry Check -- OPEN
+
+**Source says:** The frontend disables the Resend button when `not_sent` and `retry_count < retry_limit` (REQ-065). The decision says the API should reject with HTTP 409 in the same case.
+**Ambiguity:** Should the guard be enforced in the domain layer (shared by both REST and MCP), or independently in each handler? Domain-layer enforcement means the store or service method checks retry state and returns a domain error (e.g., `ErrRetriesRemaining`), which handlers map to HTTP 409 / MCP tool error. Handler-layer enforcement means each handler queries the notification, checks the condition, and rejects before calling the reset logic.
+**Decision made:** The spec does not prescribe the implementation layer. REQ-023 specifies the REST behavior (HTTP 409), REQ-017 in mcp-integration specifies the MCP behavior (tool error). Both reference the same condition (`not_sent` + `retry_count < retry_limit`). The implementer should enforce this in the domain/service layer so both handlers share the same logic, consistent with REQ-005/REQ-009 (MCP tools use the same service/store as REST).
+**Alternative interpretation:** Each handler checks independently, duplicating the guard logic.
+**Impact if wrong:** If enforced only in handlers, a future third caller (e.g., a CLI command, a cron job) could bypass the guard and reset a notification mid-retry. Domain-layer enforcement is safer.
+
+## Reset Guard -- Error Message Wording -- OPEN
+
+**Source says:** The decision specifies the error message as "notification has retries remaining."
+**Ambiguity:** Should this be a safe domain error returned as-is (like `"already notified"` per MCP REQ-016), or an internal error that gets masked to `"internal error"` (per MCP REQ-014)?
+**Decision made:** This is a safe domain error. The message `"notification has retries remaining"` contains no sensitive information and is useful for the caller. It follows the same pattern as `"already notified"` and `"not found"`. Both the REST and MCP specs specify the exact message to return to the client.
+**Alternative interpretation:** The error could be classified as internal since it relates to server-side retry state.
+**Impact if wrong:** If classified as internal, the MCP tool would return the unhelpful `"internal error"` message, and the frontend would not be able to distinguish "retries remaining" from a real server failure.

@@ -27,6 +27,11 @@ Exposes the notification service's domain logic through the Model Context Protoc
 - REQ-015: MCP tool handlers SHALL log the real error server-side via `slog.Error` with structured context (operation name, relevant IDs) before returning the generic error to the client.
 - REQ-016: Domain-specific errors that are safe for clients (e.g., `"email is required"`, `"already notified"`, `"not found"`, validation errors from `domain.ValidateEmail`) SHALL continue to be returned to the client as-is.
 
+### MCP Reset Guard
+
+- REQ-017: The `reset_notification` MCP tool SHALL reject reset requests for notifications in `not_sent` state when `retry_count < retry_limit` (auto-retry still in progress). The tool SHALL return a `gomcp.NewToolResultError` with the message `"notification has retries remaining"`. This mirrors the HTTP 409 Conflict behavior of `POST /v1/notify/reset`.
+- REQ-018: The `reset_notification` MCP tool SHALL allow resets for `not_sent` notifications when `retry_count >= retry_limit`, and SHALL always allow resets for `failed` and `delivered` notifications.
+
 ### MCP Bridge
 
 - REQ-010: The `mcp-bridge` subcommand SHALL read JSON-RPC messages from stdin and forward them to the HTTP MCP endpoint at `http://<host>:<port>/mcp`.
@@ -74,6 +79,20 @@ Exposes the notification service's domain logic through the Model Context Protoc
 - **Given** a notification has already been sent to `user@company.com`
 - **When** the `send_notification` MCP tool is called with `{"email": "user@company.com"}`
 - **Then** the tool response SHALL be an error containing `"already notified"`
+
+### Scenario: MCP reset rejected for not_sent with retries remaining
+
+- **Given** a notification for `user@company.com` exists with state `not_sent`, `retry_count` of 1, and `retry_limit` of 3
+- **When** the `reset_notification` MCP tool is called with `{"email": "user@company.com"}`
+- **Then** the tool response SHALL be an error containing `"notification has retries remaining"`
+- **And** the notification state SHALL remain `not_sent`
+
+### Scenario: MCP reset allowed for not_sent with retries exhausted
+
+- **Given** a notification for `user@company.com` exists with state `not_sent`, `retry_count` of 3, and `retry_limit` of 3
+- **When** the `reset_notification` MCP tool is called with `{"email": "user@company.com"}`
+- **Then** the notification state SHALL be `pending`
+- **And** the `retry_count` SHALL be 0
 
 ### Scenario: MCP duplicate prevention matches REST
 
