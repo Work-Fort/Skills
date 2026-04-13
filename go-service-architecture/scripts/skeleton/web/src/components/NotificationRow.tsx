@@ -27,7 +27,14 @@ export function NotificationRow({
   resending = false,
 }: NotificationRowProps) {
   const { id, email, status, retry_count, retry_limit } = notification
+
+  // REQ-064/REQ-066: Resend visible for failed and not_sent states.
   const showResend = onResend && resendableStates.includes(status)
+
+  // REQ-065/REQ-067: Disable when resending OR when auto-retry is
+  // still in progress (not_sent with retries remaining).
+  const retryInProgress = status === 'not_sent' && retry_count < retry_limit
+  const disableResend = resending || retryInProgress
 
   return (
     <tr>
@@ -49,7 +56,7 @@ export function NotificationRow({
             variant="secondary"
             className="min-w-[7rem]"
             onClick={() => onResend(id)}
-            disabled={resending}
+            disabled={disableResend}
           >
             {resending ? 'Resending...' : 'Resend'}
           </Button>
