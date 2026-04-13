@@ -47,7 +47,7 @@ export function NotificationRow({
 
   return (
     <tr>
-      <td className="whitespace-nowrap px-4 py-3 text-sm font-mono text-gray-600 dark:text-gray-400">
+      <td className="whitespace-nowrap px-4 py-3 text-sm font-mono text-gray-600 dark:text-gray-300">
         {id}
       </td>
       <td className="whitespace-nowrap px-4 py-3 text-sm">
@@ -56,7 +56,7 @@ export function NotificationRow({
       <td className="whitespace-nowrap px-4 py-3">
         <StatusBadge status={status} />
       </td>
-      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
         {retry_count} / {retry_limit}
       </td>
       <td className="whitespace-nowrap px-4 py-3">
