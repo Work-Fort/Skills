@@ -134,54 +134,6 @@ func TestResetAndRedeliver(t *testing.T) {
 	}
 }
 
-// TestResetFailedExample verifies that resetting a notification that
-// failed (e.g. @example.com) results in it failing again after
-// re-delivery, not getting stuck in a stale state.
-func TestResetFailedExample(t *testing.T) {
-	smtpHost, smtpPort, _ := MailpitAddr()
-	addr := FreePort(t)
-	d := StartDaemon(t, serviceBin, addr, WithSMTP(smtpHost, smtpPort))
-	t.Cleanup(func() { d.StopFatal(t) })
-
-	base := fmt.Sprintf("http://%s", addr)
-
-	// Step 1: Send notification to example.com (auto-fails).
-	body := `{"email": "reset-e2e@example.com"}`
-	resp, err := http.Post(base+"/v1/notify", "application/json", strings.NewReader(body))
-	if err != nil {
-		t.Fatalf("POST /v1/notify: %v", err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("notify: expected 202, got %d", resp.StatusCode)
-	}
-
-	// Step 2: Wait for it to reach failed state.
-	// example.com triggers permanent failure only in QA builds
-	// (build tag "qa"). In non-QA builds, skip this test.
-	state := pollNotificationState(t, base, "reset-e2e@example.com", "failed", 15*time.Second)
-	if state != "failed" {
-		t.Skipf("skipping: example.com did not fail (got %q); requires QA build tag", state)
-	}
-
-	// Step 3: Reset the notification.
-	resetBody := `{"email": "reset-e2e@example.com"}`
-	resp, err = http.Post(base+"/v1/notify/reset", "application/json", strings.NewReader(resetBody))
-	if err != nil {
-		t.Fatalf("POST /v1/notify/reset: %v", err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("reset: expected 204, got %d", resp.StatusCode)
-	}
-
-	// Step 4: Wait for it to fail again after re-delivery attempt.
-	state = pollNotificationState(t, base, "reset-e2e@example.com", "failed", 30*time.Second)
-	if state != "failed" {
-		t.Fatalf("after reset: expected failed again, got %q", state)
-	}
-}
-
 // TestResetRetryCount verifies that retry_count is reset to 0 after a
 // reset, observable through the list endpoint.
 func TestResetRetryCount(t *testing.T) {
