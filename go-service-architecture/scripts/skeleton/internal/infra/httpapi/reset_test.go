@@ -144,13 +144,45 @@ func TestHandleResetInvalidJSON(t *testing.T) {
 	}
 }
 
-func TestHandleResetFromNotSent(t *testing.T) {
+func TestHandleResetRetriesRemaining(t *testing.T) {
+	store := newResetStubStore()
+	store.notifications["retry@company.com"] = &domain.Notification{
+		ID:         "ntf_reset-guard",
+		Email:      "retry@company.com",
+		Status:     domain.StatusNotSent,
+		RetryCount: 1,
+		RetryLimit: domain.DefaultRetryLimit,
+	}
+
+	handler := HandleReset(store)
+
+	body := `{"email": "retry@company.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/notify/reset", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusConflict)
+	}
+
+	var resp map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["error"] != "notification has retries remaining" {
+		t.Errorf("error = %q, want %q", resp["error"], "notification has retries remaining")
+	}
+}
+
+func TestHandleResetFromNotSentRetriesExhausted(t *testing.T) {
 	store := newResetStubStore()
 	store.notifications["retry@company.com"] = &domain.Notification{
 		ID:         "ntf_reset-2",
 		Email:      "retry@company.com",
 		Status:     domain.StatusNotSent,
-		RetryCount: 1,
+		RetryCount: 3,
 		RetryLimit: domain.DefaultRetryLimit,
 	}
 

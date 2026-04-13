@@ -48,6 +48,14 @@ func HandleReset(store domain.ResetStore) http.HandlerFunc {
 			return
 		}
 
+		// REQ-023: Reject reset when auto-retry is still in progress.
+		if err := domain.CheckResetAllowed(n.Status, n.RetryCount, n.RetryLimit); err != nil {
+			writeJSON(w, http.StatusConflict, map[string]string{
+				"error": err.Error(),
+			})
+			return
+		}
+
 		// REQ-002: Transition to pending via the state machine. This
 		// validates that TriggerReset is permitted from the current state
 		// and updates the status through the mutator.
