@@ -69,7 +69,8 @@ func TestHandleResetSuccess(t *testing.T) {
 		RetryLimit: domain.DefaultRetryLimit,
 	}
 
-	handler := HandleReset(store)
+	enqueuer := &stubEnqueuer{}
+	handler := HandleReset(store, enqueuer)
 
 	body := `{"email": "user@company.com"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/notify/reset", strings.NewReader(body))
@@ -103,11 +104,16 @@ func TestHandleResetSuccess(t *testing.T) {
 	if store.transitions[0] != "delivered->pending" {
 		t.Errorf("transition = %q, want %q", store.transitions[0], "delivered->pending")
 	}
+
+	// REQ-007: Verify a delivery job was enqueued.
+	if len(enqueuer.jobs) != 1 {
+		t.Fatalf("enqueued jobs = %d, want 1", len(enqueuer.jobs))
+	}
 }
 
 func TestHandleResetNotFound(t *testing.T) {
 	store := newResetStubStore()
-	handler := HandleReset(store)
+	handler := HandleReset(store, &stubEnqueuer{})
 
 	body := `{"email": "nobody@company.com"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/notify/reset", strings.NewReader(body))
@@ -131,7 +137,7 @@ func TestHandleResetNotFound(t *testing.T) {
 
 func TestHandleResetInvalidJSON(t *testing.T) {
 	store := newResetStubStore()
-	handler := HandleReset(store)
+	handler := HandleReset(store, &stubEnqueuer{})
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/notify/reset", strings.NewReader("{bad"))
 	req.Header.Set("Content-Type", "application/json")
@@ -154,7 +160,7 @@ func TestHandleResetRetriesRemaining(t *testing.T) {
 		RetryLimit: domain.DefaultRetryLimit,
 	}
 
-	handler := HandleReset(store)
+	handler := HandleReset(store, &stubEnqueuer{})
 
 	body := `{"email": "retry@company.com"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/notify/reset", strings.NewReader(body))
@@ -186,7 +192,8 @@ func TestHandleResetFromNotSentRetriesExhausted(t *testing.T) {
 		RetryLimit: domain.DefaultRetryLimit,
 	}
 
-	handler := HandleReset(store)
+	enqueuer := &stubEnqueuer{}
+	handler := HandleReset(store, enqueuer)
 
 	body := `{"email": "retry@company.com"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/notify/reset", strings.NewReader(body))
@@ -206,11 +213,16 @@ func TestHandleResetFromNotSentRetriesExhausted(t *testing.T) {
 	if n.RetryCount != 0 {
 		t.Errorf("retry_count = %d, want 0", n.RetryCount)
 	}
+
+	// REQ-007: Verify a delivery job was enqueued.
+	if len(enqueuer.jobs) != 1 {
+		t.Fatalf("enqueued jobs = %d, want 1", len(enqueuer.jobs))
+	}
 }
 
 func TestHandleResetOversizedBody(t *testing.T) {
 	store := newResetStubStore()
-	handler := HandleReset(store)
+	handler := HandleReset(store, &stubEnqueuer{})
 
 	// Create a body larger than 1 MB.
 	body := make([]byte, 1<<20+1)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/workfort/notifier/internal/domain"
+	"github.com/workfort/notifier/internal/infra/queue"
 )
 
 // resetRequest is the JSON body for POST /v1/notify/reset.
@@ -20,7 +21,7 @@ type resetRequest struct {
 // via the state machine (TriggerReset, satisfying REQ-002), clears the
 // retry count and timestamps, logs the transition, and returns 204 No
 // Content.
-func HandleReset(store domain.ResetStore) http.HandlerFunc {
+func HandleReset(store domain.ResetStore, enqueuer domain.Enqueuer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit (REQ-018)
 
@@ -90,6 +91,25 @@ func HandleReset(store domain.ResetStore) http.HandlerFunc {
 
 		if err := store.UpdateNotification(r.Context(), n); err != nil {
 			slog.Error("update notification for reset failed", "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{
+				"error": "internal server error",
+			})
+			return
+		}
+
+		// REQ-007: Enqueue a delivery job so the worker re-attempts delivery.
+		reqID := RequestIDFromContext(r.Context())
+		jobPayload := queue.EmailJobPayload{
+			NotificationID: n.ID,
+			Email:          n.Email,
+			RequestID:      reqID,
+		}
+		payload, _ := json.Marshal(jobPayload)
+		if err := enqueuer.Enqueue(r.Context(), payload); err != nil {
+			slog.Error("enqueue reset delivery job failed",
+				"error", err,
+				"notification_id", n.ID,
+			)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{
 				"error": "internal server error",
 			})

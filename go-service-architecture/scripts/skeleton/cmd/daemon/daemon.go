@@ -213,7 +213,7 @@ func RunServer(ctx context.Context, cfg ServerConfig) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/health", httpapi.HandleHealth(store))
 	mux.HandleFunc("POST /v1/notify", httpapi.HandleNotify(store, nq))
-	mux.HandleFunc("POST /v1/notify/reset", httpapi.HandleReset(store))
+	mux.HandleFunc("POST /v1/notify/reset", httpapi.HandleReset(store, nq))
 	mux.HandleFunc("GET /v1/notifications", httpapi.HandleList(store))
 	mux.HandleFunc("GET /v1/ws", ws.HandleWS(hub, hubCtx, allowedOrigins))
 	mux.Handle("/mcp/", http.StripPrefix("/mcp", mcpHandler))
