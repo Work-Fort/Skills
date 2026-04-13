@@ -219,7 +219,7 @@ for the initial implementation but worth revisiting.
   increase the shutdown timeout or add a `runner.Wait()` call
   between cancelling the runner and closing the store
 
-## #22 — Reset Button for Delivered Notifications
+## #22 — Reset Button for Delivered Notifications ✅
 
 - The dashboard has a Resend button for failed/not_sent but no way
   to reset a delivered notification from the UI
