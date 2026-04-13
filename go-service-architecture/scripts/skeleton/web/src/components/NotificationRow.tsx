@@ -11,13 +11,13 @@ export interface Notification {
 
 export interface NotificationRowProps {
   notification: Notification
-  /** Called when the user clicks "Resend". Only shown for failed/not_sent states. */
+  /** Called when the user clicks "Retry". Only shown for failed/not_sent states. */
   onResend?: (id: string) => void
-  /** When true, the resend button shows a loading state. */
+  /** When true, the retry button shows a loading state. */
   resending?: boolean
-  /** Called when the user clicks "Reset". Only shown for delivered state. */
+  /** Called when the user clicks "Re-deliver". Only shown for delivered state. */
   onReset?: (id: string) => void
-  /** When true, the reset button shows a loading state. */
+  /** When true, the re-deliver button shows a loading state. */
   resetting?: boolean
 }
 
@@ -67,17 +67,17 @@ export function NotificationRow({
             onClick={() => onResend(id)}
             disabled={disableResend}
           >
-            {resending ? 'Resending...' : 'Resend'}
+            {resending ? 'Retrying...' : 'Retry'}
           </Button>
         )}
         {showReset && (
           <Button
             variant="secondary"
-            className="min-w-[7.5rem]"
+            className="min-w-[8.5rem]"
             onClick={() => onReset(id)}
             disabled={resetting}
           >
-            {resetting ? 'Resetting...' : 'Reset'}
+            {resetting ? 'Re-delivering...' : 'Re-deliver'}
           </Button>
         )}
       </td>
