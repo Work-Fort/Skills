@@ -43,7 +43,7 @@ Provides a React SPA dashboard embedded in the Go binary for monitoring notifica
 ### Empty State
 
 - REQ-050: When the notification list is empty (zero rows), the dashboard SHALL render the table with its header row and a single `<tbody>` row containing a `<td>` that spans all columns (`colSpan` equal to the number of header columns).
-- REQ-051: The empty state `<td>` SHALL display the text "No notifications yet" centered within the cell, using muted text color (`text-gray-500 dark:text-gray-400`) and vertical padding (`py-12`) for visual emphasis.
+- REQ-051: The empty state `<td>` SHALL display the text "No notifications yet" centered within the cell, using muted text color (`text-gray-500 dark:text-gray-300`) and vertical padding (`py-12`) for visual emphasis.
 - REQ-052: The empty state SHALL be rendered inside the same table structure (same `<div>` container, same `<table>`, same `<thead>`) as the populated state, so that the table headers remain visible.
 - REQ-053: The `Dashboard.stories.tsx` Empty story SHALL render the empty state inside the table (headers visible with the "No notifications yet" row), NOT as a standalone message outside the table.
 

@@ -391,3 +391,11 @@
 **Decision made:** The spec does not prescribe a specific variant, leaving it to implementation. The Resend button's `variant="secondary"` is established precedent.
 **Alternative interpretation:** A different variant (e.g., `warning` or `info`) could visually distinguish Reset from Resend, which could help users understand the different semantics.
 **Impact if wrong:** Using the wrong variant could confuse users about the severity of the action, or fail accessibility contrast checks.
+
+## WCAG AA Contrast -- Scope of Tailwind Class Changes -- OPEN
+
+**Source says:** Three contrast fixes are needed: (1) brand accent `#e94560` to `#d43555`, (2) NotificationRow dark mode table text `dark:text-gray-400` to `dark:text-gray-300`, (3) DarkModeToggle helper text `text-gray-500` to `text-gray-600`.
+**Ambiguity:** The spec (REQ-051) prescribes `dark:text-gray-400` for the empty state muted text. The NotificationRow and DarkModeToggle class changes are not mentioned in the spec because the spec does not prescribe Tailwind classes for those components. Should the spec add requirements for the specific Tailwind classes used by NotificationRow and DarkModeToggle, or is WCAG compliance (REQ-038 through REQ-045) sufficient to enforce correct contrast?
+**Decision made:** Updated REQ-051 to use `dark:text-gray-300` (matching the empty state fix). Did not add new requirements for NotificationRow or DarkModeToggle classes because the existing a11y test suite (REQ-038 through REQ-045) already enforces WCAG AA contrast on every story in both light and dark mode. The specific Tailwind classes are implementation details; the spec enforces the outcome (4.5:1 contrast ratio) rather than the mechanism.
+**Alternative interpretation:** The spec could prescribe exact Tailwind classes for every text element to prevent future regressions without relying on the a11y test suite.
+**Impact if wrong:** If the a11y test suite is ever removed or weakened, there would be no spec-level requirement preventing low-contrast Tailwind classes from being reintroduced in NotificationRow or DarkModeToggle.
