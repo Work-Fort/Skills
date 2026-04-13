@@ -45,6 +45,7 @@ func NewCmd(frontendFS embed.FS) *cobra.Command {
 	cmd.Flags().String("smtp-from", "notifier@localhost", "Email sender address")
 	cmd.Flags().Bool("dev", false, "Enable dev mode (proxy to Vite dev server)")
 	cmd.Flags().String("dev-url", "http://localhost:5173", "Vite dev server URL")
+	cmd.Flags().Int("shutdown-timeout", 60, "Shutdown timeout in seconds")
 	return cmd
 }
 
@@ -61,6 +62,7 @@ func runWithFS(cmd *cobra.Command, _ []string, frontendFS embed.FS) error {
 	smtpFrom := resolveString(cmd, "smtp-from")
 	dev, _ := cmd.Flags().GetBool("dev")
 	devURL := resolveString(cmd, "dev-url")
+	shutdownTimeout := resolveDuration(cmd, "shutdown-timeout")
 
 	// Graceful shutdown on SIGINT/SIGTERM.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -80,9 +82,10 @@ func runWithFS(cmd *cobra.Command, _ []string, frontendFS embed.FS) error {
 		SMTPPort:   smtpPort,
 		SMTPFrom:   smtpFrom,
 		Version:    version,
-		Dev:        dev,
-		DevURL:     devURL,
-		FrontendFS: frontendFS,
+		Dev:             dev,
+		DevURL:          devURL,
+		ShutdownTimeout: shutdownTimeout,
+		FrontendFS:      frontendFS,
 	})
 }
 
@@ -95,16 +98,20 @@ type ServerConfig struct {
 	SMTPPort   int
 	SMTPFrom   string
 	Version    string
-	Dev        bool
-	DevURL     string
-	FrontendFS embed.FS
+	Dev             bool
+	DevURL          string
+	ShutdownTimeout time.Duration
+	FrontendFS      embed.FS
 }
 
 // RunServer starts the HTTP server with the given configuration and
 // blocks until the context is cancelled or a fatal error occurs.
 // Exported so tests can call it with a cancellable context.
 func RunServer(ctx context.Context, cfg ServerConfig) error {
-	// Default DSN to XDG state directory.
+	// QA builds force in-memory SQLite; non-QA passes through unchanged.
+	cfg.DSN = resolveDSN(cfg.DSN)
+
+	// Default DSN to XDG state directory (only reached in non-QA builds).
 	if cfg.DSN == "" {
 		cfg.DSN = filepath.Join(config.StatePath(), "notifier.db")
 	}
@@ -282,6 +289,13 @@ func resolveInt(cmd *cobra.Command, key string) int {
 	}
 	v, _ := cmd.Flags().GetInt(key)
 	return v
+}
+
+// resolveDuration reads a timeout value (in seconds) from koanf or
+// cobra flag and returns it as a time.Duration.
+func resolveDuration(cmd *cobra.Command, key string) time.Duration {
+	seconds := resolveInt(cmd, key)
+	return time.Duration(seconds) * time.Second
 }
 
 // resolveAllowedOrigins returns the configured WebSocket origin
