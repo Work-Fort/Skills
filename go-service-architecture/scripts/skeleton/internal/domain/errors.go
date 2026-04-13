@@ -13,4 +13,8 @@ var (
 	// ErrInvalidEmail is returned when the email address fails format
 	// validation.
 	ErrInvalidEmail = errors.New("invalid email address")
+
+	// ErrRetriesRemaining is returned when a reset is attempted on a
+	// notification that still has automatic retries in progress.
+	ErrRetriesRemaining = errors.New("notification has retries remaining")
 )
