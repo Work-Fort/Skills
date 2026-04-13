@@ -82,6 +82,11 @@ func HandleResetNotification(store domain.ResetStore) server.ToolHandlerFunc {
 			return gomcp.NewToolResultError("internal error"), nil
 		}
 
+		// REQ-017: Reject reset when auto-retry is still in progress.
+		if err := domain.CheckResetAllowed(n.Status, n.RetryCount, n.RetryLimit); err != nil {
+			return gomcp.NewToolResultError(err.Error()), nil
+		}
+
 		prevStatus := n.Status
 		sm := domain.ConfigureStateMachine(
 			store.NotificationStateAccessor(n.ID),

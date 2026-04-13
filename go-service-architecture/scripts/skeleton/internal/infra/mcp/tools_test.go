@@ -272,6 +272,57 @@ func TestResetNotificationToolNotFound(t *testing.T) {
 	}
 }
 
+func TestHandleResetNotificationRetriesRemaining(t *testing.T) {
+	store := newStubStore()
+	store.notifications["retry@company.com"] = &domain.Notification{
+		ID:         "ntf_mcp-guard",
+		Email:      "retry@company.com",
+		Status:     domain.StatusNotSent,
+		RetryCount: 1,
+		RetryLimit: domain.DefaultRetryLimit,
+	}
+
+	handler := HandleResetNotification(store)
+	req := gomcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"email": "retry@company.com"}
+
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected tool error result")
+	}
+
+	text := result.Content[0].(gomcp.TextContent).Text
+	if text != "notification has retries remaining" {
+		t.Errorf("text = %q, want %q", text, "notification has retries remaining")
+	}
+}
+
+func TestHandleResetNotificationRetriesExhausted(t *testing.T) {
+	store := newStubStore()
+	store.notifications["retry@company.com"] = &domain.Notification{
+		ID:         "ntf_mcp-exhausted",
+		Email:      "retry@company.com",
+		Status:     domain.StatusNotSent,
+		RetryCount: 3,
+		RetryLimit: domain.DefaultRetryLimit,
+	}
+
+	handler := HandleResetNotification(store)
+	req := gomcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"email": "retry@company.com"}
+
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected tool error: %v", result.Content)
+	}
+}
+
 func TestListNotificationsTool(t *testing.T) {
 	store := newStubStore()
 	store.notifications["user@company.com"] = &domain.Notification{
