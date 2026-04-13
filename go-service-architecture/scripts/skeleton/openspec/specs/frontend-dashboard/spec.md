@@ -30,7 +30,7 @@ Provides a React SPA dashboard embedded in the Go binary for monitoring notifica
 
 - REQ-012: The dashboard SHALL display a table of all notifications with their current state, email, retry count, and retry limit. Below the table, the pagination component SHALL display the current page number and total page count.
 - REQ-013: The dashboard SHALL connect to `/v1/ws` via WebSocket to receive real-time state updates without polling.
-- REQ-014: The dashboard SHALL provide a resend button that calls `POST /v1/notify/reset` for a given notification.
+- REQ-014: The dashboard SHALL provide a Resend button for `failed`/`not_sent` notifications and a Reset button for `delivered` notifications. Both buttons call `POST /v1/notify/reset` with the notification's email address.
 - REQ-015: The dashboard SHALL include an API client module for communicating with the REST endpoints.
 
 ### Table Border Styling
@@ -120,7 +120,7 @@ Provides a React SPA dashboard embedded in the Go binary for monitoring notifica
 
 ### Layout Stability
 
-- REQ-061: Interactive buttons whose visible text changes between states (e.g., "Resend" / "Resending...") SHALL have a stable rendered width that does not change when the text changes. The button SHALL use a CSS `min-width` (or equivalent constraint) that accommodates the widest text variant, preventing table column resize and layout shift on state change.
+- REQ-061: Interactive buttons whose visible text changes between states (e.g., "Resend" / "Resending...", "Reset" / "Resetting...") SHALL have a stable rendered width that does not change when the text changes. The button SHALL use a CSS `min-width` (or equivalent constraint) that accommodates the widest text variant, preventing table column resize and layout shift on state change.
 - REQ-062: The Resend button in `NotificationRow` SHALL have a `min-width` that accommodates the "Resending..." label so that switching between "Resend" and "Resending..." does not cause the Actions column or the table to reflow.
 
 ### Resend Button Visibility
@@ -132,7 +132,16 @@ Provides a React SPA dashboard embedded in the Go binary for monitoring notifica
 
 ### Resend Race Condition
 
-- REQ-063: When the `useNotifications` hook receives a WebSocket update that changes a notification's state to a non-resendable state (`pending`, `sending`, or `delivered`), it SHALL immediately remove that notification's ID from the `resending` Set, regardless of whether the resend HTTP request has completed. This prevents a render frame where the button is simultaneously disabled (resending in progress) and absent (state no longer resendable).
+- REQ-063: When the `useNotifications` hook receives a WebSocket update that changes a notification's state to a non-actionable state (`pending` or `sending`), it SHALL immediately remove that notification's ID from both the `resending` Set and the `resetting` Set (if tracked separately), regardless of whether the HTTP request has completed. This prevents a render frame where a button is simultaneously disabled (request in progress) and absent (state no longer shows that button).
+
+### Reset Button for Delivered Notifications
+
+- REQ-068: For notifications in `delivered` state, the `NotificationRow` component SHALL display a "Reset" button. The Reset button SHALL NOT appear for any other status.
+- REQ-069: The Reset button SHALL call `POST /v1/notify/reset` with the notification's email address when clicked. The `NotificationRowProps` interface SHALL accept an `onReset` callback `(id: string) => void` and a `resetting` boolean prop.
+- REQ-070: While the reset HTTP request is in flight, the Reset button SHALL display the text "Resetting..." and SHALL be disabled.
+- REQ-071: The Reset button SHALL have a CSS `min-width` (e.g., `min-w-[7.5rem]`) that accommodates the "Resetting..." label so that switching between "Reset" and "Resetting..." does not cause the Actions column or the table to reflow.
+- REQ-072: After a successful reset, the WebSocket update SHALL transition the notification to `pending` state. The `useNotifications` hook SHALL remove the notification's ID from the resetting tracking state when it receives a WebSocket update changing the notification's state away from `delivered`.
+- REQ-073: The Resend button and the Reset button SHALL NOT both appear on the same notification row. The Resend button appears for `failed` and `not_sent` states; the Reset button appears for `delivered` state. The `pending` and `sending` states show no action button.
 
 ## Scenarios
 
@@ -359,3 +368,41 @@ Provides a React SPA dashboard embedded in the Go binary for monitoring notifica
 - **Then** the `useNotifications` hook SHALL remove `ntf_abc123` from the `resending` Set
 - **And** the notification row SHALL render with the `pending` StatusBadge and no Resend button
 - **And** there SHALL be no render frame where the button is both disabled and absent
+
+### Scenario: Reset button displayed on delivered notification
+
+- **Given** a notification with status `delivered`
+- **When** the `NotificationRow` component renders
+- **Then** a "Reset" button SHALL be visible and enabled
+- **And** no "Resend" button SHALL be present on the row
+
+### Scenario: Reset button not displayed on non-delivered statuses
+
+- **Given** a notification with status `failed`
+- **When** the `NotificationRow` component renders
+- **Then** no "Reset" button SHALL be present on the row
+- **And** the "Resend" button SHALL be visible
+
+### Scenario: Reset button shows loading state during request
+
+- **Given** a notification with status `delivered` and the Reset button visible
+- **When** the user clicks "Reset"
+- **Then** the button text SHALL change to "Resetting..."
+- **And** the button SHALL be disabled
+- **And** the button's rendered width SHALL NOT change
+
+### Scenario: Reset completes and WebSocket updates row
+
+- **Given** the user has clicked "Reset" on a delivered notification `ntf_xyz789`
+- **When** the reset HTTP request succeeds (HTTP 204)
+- **And** a WebSocket message arrives setting `ntf_xyz789` state to `pending`
+- **Then** the notification row SHALL display the `pending` StatusBadge
+- **And** no action button (Reset or Resend) SHALL be present on the row
+- **And** the `useNotifications` hook SHALL remove `ntf_xyz789` from the resetting tracking state
+
+### Scenario: No action button on pending or sending notifications
+
+- **Given** a notification with status `pending`
+- **When** the `NotificationRow` component renders
+- **Then** no "Resend" button SHALL be present
+- **And** no "Reset" button SHALL be present

@@ -367,3 +367,27 @@
 **Decision made:** The reset endpoint SHALL enqueue a new delivery job after successfully transitioning to `pending` (notification-management REQ-007, mcp-integration REQ-019). This matches the intent of "reset for re-delivery" -- a reset that does not re-deliver is operationally useless. The `reset.go` handler needs to accept a `domain.Enqueuer` (or equivalent queue port) and call it after the state transition and field reset.
 **Alternative interpretation:** The reset could only transition state, and the caller would need to use a separate "re-send" endpoint or manually trigger delivery. This would give the caller more control but adds an extra step that is easy to forget.
 **Impact if wrong:** If the reset does not enqueue, every reset leaves the notification stranded in `pending` forever. The dashboard shows "pending" but nothing happens. Users must know to call a second endpoint to actually trigger delivery, which is unintuitive and error-prone.
+
+## Reset Button -- REQ-063 Scope Change for `delivered` State -- OPEN
+
+**Source says:** The original REQ-063 listed `delivered` as a "non-resendable state" that should clear the `resending` Set. With the Reset button, `delivered` now has its own action button.
+**Ambiguity:** Should a WebSocket update to `delivered` still clear the `resending` Set? And should it also clear the `resetting` Set?
+**Decision made:** REQ-063 was narrowed to only clear on `pending` and `sending` (truly non-actionable states). A transition to `delivered` no longer clears `resending` via REQ-063 because `delivered` rows now show the Reset button (not the Resend button), so the Resend button would already be gone from the row. The `resetting` Set is cleared when the state transitions away from `delivered` (REQ-072).
+**Alternative interpretation:** Keep `delivered` in REQ-063's clear list for the `resending` Set as a safety measure, even though the button would already be hidden.
+**Impact if wrong:** If `delivered` is removed from the resending clear list and a race condition causes a notification to land in `delivered` while `resending` is still tracked, the stale entry in the Set has no visible effect (the Resend button is already gone), but it wastes memory until the Set is garbage collected.
+
+## Reset Button -- Separate Tracking Set vs Shared Set -- OPEN
+
+**Source says:** The user's description says the Reset button should "show loading state" and the spec uses a `resetting` boolean prop.
+**Ambiguity:** Should the hook use a separate `resetting` Set alongside the existing `resending` Set, or should they share a single Set (since only one button can appear per row)?
+**Decision made:** The spec allows either approach (REQ-063 says "resetting Set (if tracked separately)"). Since only one action button appears per row (REQ-073), a single shared Set would work functionally. However, separate Sets are clearer for maintainability.
+**Alternative interpretation:** A single `actionInFlight` Set could track both, since the states are mutually exclusive. This reduces state management complexity.
+**Impact if wrong:** If a single Set is used but future requirements allow both buttons on the same row, the tracking would be ambiguous. With separate Sets, no risk.
+
+## Reset Button -- Button Variant -- OPEN
+
+**Source says:** The existing Resend button uses `variant="secondary"`. The user's description does not specify a variant for the Reset button.
+**Ambiguity:** What visual variant should the Reset button use? `secondary` (matching Resend), `warning` (to signal a state change), `info`, or something else?
+**Decision made:** The spec does not prescribe a specific variant, leaving it to implementation. The Resend button's `variant="secondary"` is established precedent.
+**Alternative interpretation:** A different variant (e.g., `warning` or `info`) could visually distinguish Reset from Resend, which could help users understand the different semantics.
+**Impact if wrong:** Using the wrong variant could confuse users about the severity of the action, or fail accessibility contrast checks.
