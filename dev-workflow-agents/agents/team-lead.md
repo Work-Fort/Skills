@@ -112,6 +112,19 @@ Spec Writer → Planner → Assessor → [Revise] → TPM Approve
   If no E2E tests exist yet (e.g., Step 1-2), QA is skipped.
 - **Do not commit completion docs until reviewer approves.**
 - **Do not push until team lead explicitly authorizes.**
+- **Commit artifacts after each role completes.** Spec-writer,
+  planner, and assessor agents produce files but do not have git
+  commit permissions. The team lead must commit their output
+  immediately after each role finishes — not at the end of the
+  step. This prevents uncommitted files from accumulating.
+  Specifically:
+  - After spec-writer: commit updated specs, ambiguity report,
+    and change packages
+  - After planner: commit the plan document
+  - After assessor: no commit (assessment is temporary)
+  - After developer: developer commits as part of implementation
+  - After reviewer: no commit (verdict is verbal)
+  - After QA: commit any bug reports filed
 
 ## Splitting Large Work
 
