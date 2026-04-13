@@ -182,7 +182,7 @@ for the initial implementation but worth revisiting.
   >= retry_limit), or show it always but with a tooltip explaining
   that auto-retry is in progress
 
-## #18 — Silent Error on Startup
+## #18 — Silent Error on Startup ✅
 
 - `SilenceErrors: true` in cobra root command combined with
   `os.Exit(1)` swallows all startup errors — user sees no output
@@ -207,7 +207,7 @@ for the initial implementation but worth revisiting.
 - Fix: set a fixed `min-width` on the Actions column or the Resend
   button to prevent layout reflow
 
-## #21 — Graceful Shutdown Race with In-Flight Jobs
+## #21 — Graceful Shutdown Race with In-Flight Jobs ✅
 
 - During shutdown, the store closes before the job runner finishes
   draining in-flight jobs, causing `sql: database is closed` errors
