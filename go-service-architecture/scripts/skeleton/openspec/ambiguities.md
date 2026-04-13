@@ -216,6 +216,22 @@
 **Alternative interpretation:** The config key could be `ws.origins` (simpler, avoids the hyphen-vs-dot mapping issue). Or the environment variable could use a different separator (semicolon, space) or a JSON-encoded list.
 **Impact if wrong:** If the YAML key and env var resolve to different koanf paths, the env var override silently fails -- the operator thinks they configured origins via environment but the code reads the YAML default. This would leave the WebSocket endpoint unprotected in container deployments that rely on env vars.
 
+## Runner Wait Mechanism -- OPEN
+
+**Source says:** Future work item #21 says "add a `runner.Wait()` call between cancelling the runner and closing the store." The `jobs.Runner` from `maragu.dev/goqite/jobs` is a third-party type. The current code calls `go runner.Start(runnerCtx)` which blocks until the context is cancelled.
+**Ambiguity:** Does `maragu.dev/goqite/jobs.Runner.Start()` block until all in-flight jobs complete after context cancellation, or does it return immediately once the context is cancelled (leaving in-flight goroutines running)? If it returns immediately, a separate `Wait()` method or `sync.WaitGroup` is needed. The goqite library's API may not expose a `Wait()` method at all.
+**Decision made:** The spec (service-cli REQ-018) requires a mechanism to wait for in-flight jobs, whether via `runner.Start()` blocking until completion, a `runner.Wait()` method, or a wrapper using `sync.WaitGroup`. The implementer must verify the goqite `jobs.Runner` behavior and add a wait mechanism if `Start()` does not block on in-flight jobs.
+**Alternative interpretation:** If `runner.Start()` already blocks until all in-flight jobs finish after context cancellation, the fix is simply to call `runner.Start()` synchronously (not in a goroutine) or capture the goroutine's completion via a channel, and wait on it before returning from `RunServer`. No new `Wait()` method is needed.
+**Impact if wrong:** If the spec assumes `Start()` blocks and it does not, the store will still close before in-flight jobs finish, and the `sql: database is closed` error persists. If the spec assumes a new `Wait()` is needed but `Start()` already blocks, the implementation adds unnecessary complexity.
+
+## Shutdown Timeout vs. Email Send Delay -- OPEN
+
+**Source says:** Future work item #21 says the 6-second email delay outlasts the shutdown timeout. The current code uses a 15-second shutdown timeout (`context.WithTimeout(context.Background(), 15*time.Second)`). The email send delay is 6 seconds (notification-delivery REQ-016). The QA simulated `@slow.com` delay is 30 seconds (service-build REQ-029).
+**Ambiguity:** The 15-second timeout should be sufficient for the 6-second delay, yet the future work item says in-flight jobs "outlast the shutdown timeout." This suggests the issue is not the timeout duration but the shutdown ordering: the store is closed via `defer store.Close()` immediately when `RunServer` returns, without waiting for the runner goroutine to finish. The runner context is cancelled at step 4, but the goroutine may still be executing a job when step 5 (store close via defer) runs.
+**Decision made:** The spec (service-cli REQ-017) requires waiting for in-flight jobs between cancelling the runner and closing the store. The 15-second timeout is sufficient for normal jobs (6-second delay). The `@slow.com` 30-second delay will be terminated by the shutdown timeout, which is acceptable behavior for QA simulation.
+**Alternative interpretation:** The timeout could be increased to 35 seconds to accommodate `@slow.com`, or the `ConsoleSender` could check the context and abort the delay early on shutdown.
+**Impact if wrong:** If the timeout is not long enough for normal jobs, the `sql: database is closed` error will still occur for legitimate in-flight work. If the timeout is too long, the service takes unnecessarily long to shut down.
+
 ## WebSocket Origin Validation -- 127.0.0.1 vs localhost in Test Environments -- OPEN
 
 **Source says:** The existing handler tests use `httptest.NewServer` which binds to `127.0.0.1` with a random port. The `coder/websocket` library checks the `Origin` header against `OriginPatterns`.
