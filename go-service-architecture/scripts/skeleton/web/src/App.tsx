@@ -19,6 +19,8 @@ function App() {
     totalPages,
     resend,
     resending,
+    reset,
+    resetting,
   } = useNotifications()
 
   return (
@@ -93,6 +95,8 @@ function App() {
                         notification={n}
                         onResend={resend}
                         resending={resending.has(n.id)}
+                        onReset={reset}
+                        resetting={resetting.has(n.id)}
                       />
                     ))
                   )}
