@@ -47,6 +47,7 @@ export function NotificationRow({
         {showResend && (
           <Button
             variant="secondary"
+            className="min-w-[7rem]"
             onClick={() => onResend(id)}
             disabled={resending}
           >
