@@ -66,7 +66,7 @@ func HandleSendNotification(store domain.NotificationStore, enqueuer domain.Enqu
 // HandleResetNotification returns an MCP tool handler for
 // reset_notification. It calls the same domain logic as
 // POST /v1/notify/reset (REQ-005).
-func HandleResetNotification(store domain.ResetStore) server.ToolHandlerFunc {
+func HandleResetNotification(store domain.ResetStore, enqueuer domain.Enqueuer) server.ToolHandlerFunc {
 	return func(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
 		email := req.GetString("email", "")
 		if email == "" {
@@ -107,6 +107,20 @@ func HandleResetNotification(store domain.ResetStore) server.ToolHandlerFunc {
 		n.UpdatedAt = time.Time{}
 		if err := store.UpdateNotification(ctx, n); err != nil {
 			slog.Error("update notification for reset failed", "error", err)
+			return gomcp.NewToolResultError("internal error"), nil
+		}
+
+		// REQ-007: Enqueue a delivery job so the worker re-attempts delivery.
+		jobPayload := queue.EmailJobPayload{
+			NotificationID: n.ID,
+			Email:          n.Email,
+		}
+		payload, _ := json.Marshal(jobPayload)
+		if err := enqueuer.Enqueue(ctx, payload); err != nil {
+			slog.Error("enqueue reset delivery job failed",
+				"error", err,
+				"notification_id", n.ID,
+			)
 			return gomcp.NewToolResultError("internal error"), nil
 		}
 

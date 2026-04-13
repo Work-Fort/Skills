@@ -45,7 +45,7 @@ func NewMCPHandler(store MCPStore, enqueuer domain.Enqueuer, version string) *se
 				gomcp.Description("Email address of the notification to reset"),
 			),
 		),
-		HandleResetNotification(store),
+		HandleResetNotification(store, enqueuer),
 	)
 
 	s.AddTool(

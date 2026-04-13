@@ -234,7 +234,8 @@ func TestResetNotificationTool(t *testing.T) {
 		RetryCount: 2,
 		RetryLimit: domain.DefaultRetryLimit,
 	}
-	handler := HandleResetNotification(store)
+	enqueuer := &stubEnqueuer{}
+	handler := HandleResetNotification(store, enqueuer)
 
 	req := gomcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"email": "user@company.com"}
@@ -254,11 +255,16 @@ func TestResetNotificationTool(t *testing.T) {
 	if n.RetryCount != 0 {
 		t.Errorf("retry_count = %d, want 0", n.RetryCount)
 	}
+
+	// REQ-007: Verify a delivery job was enqueued.
+	if len(enqueuer.jobs) != 1 {
+		t.Fatalf("enqueued jobs = %d, want 1", len(enqueuer.jobs))
+	}
 }
 
 func TestResetNotificationToolNotFound(t *testing.T) {
 	store := newStubStore()
-	handler := HandleResetNotification(store)
+	handler := HandleResetNotification(store, &stubEnqueuer{})
 
 	req := gomcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"email": "nobody@company.com"}
@@ -282,7 +288,7 @@ func TestHandleResetNotificationRetriesRemaining(t *testing.T) {
 		RetryLimit: domain.DefaultRetryLimit,
 	}
 
-	handler := HandleResetNotification(store)
+	handler := HandleResetNotification(store, &stubEnqueuer{})
 	req := gomcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"email": "retry@company.com"}
 
@@ -310,7 +316,8 @@ func TestHandleResetNotificationRetriesExhausted(t *testing.T) {
 		RetryLimit: domain.DefaultRetryLimit,
 	}
 
-	handler := HandleResetNotification(store)
+	enqueuer := &stubEnqueuer{}
+	handler := HandleResetNotification(store, enqueuer)
 	req := gomcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"email": "retry@company.com"}
 
@@ -320,6 +327,11 @@ func TestHandleResetNotificationRetriesExhausted(t *testing.T) {
 	}
 	if result.IsError {
 		t.Fatalf("unexpected tool error: %v", result.Content)
+	}
+
+	// REQ-007: Verify a delivery job was enqueued.
+	if len(enqueuer.jobs) != 1 {
+		t.Fatalf("enqueued jobs = %d, want 1", len(enqueuer.jobs))
 	}
 }
 
@@ -426,7 +438,7 @@ func TestSendNotificationToolEnqueueErrorSanitized(t *testing.T) {
 
 func TestResetNotificationToolInternalErrorSanitized(t *testing.T) {
 	store := &failStore{}
-	handler := HandleResetNotification(store)
+	handler := HandleResetNotification(store, &stubEnqueuer{})
 
 	req := gomcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"email": "user@company.com"}
@@ -486,7 +498,7 @@ func TestResetNotificationToolStateMachineErrorSanitized(t *testing.T) {
 			},
 		},
 	}
-	handler := HandleResetNotification(store)
+	handler := HandleResetNotification(store, &stubEnqueuer{})
 
 	req := gomcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"email": "user@company.com"}
@@ -563,7 +575,7 @@ func TestResetNotificationToolUpdateErrorSanitized(t *testing.T) {
 			},
 		},
 	}
-	handler := HandleResetNotification(store)
+	handler := HandleResetNotification(store, &stubEnqueuer{})
 
 	req := gomcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"email": "user@company.com"}
