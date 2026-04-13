@@ -52,6 +52,12 @@ Manages the lifecycle of a notification through a state machine implemented with
 - REQ-024: The states `delivered` and `failed` SHALL be terminal states (no automatic transitions out).
 - REQ-025: The state `not_sent` SHALL NOT be a terminal state; it is a retryable soft-fail state with automatic retry via the queue.
 
+### Test Coverage
+
+- REQ-026: The state machine SHALL have an integration test that exercises the full retry lifecycle (`pending -> sending -> not_sent -> sending -> delivered`) using real SQLite storage (not mocks). The test SHALL create a notification in the database, drive each transition through `ConfigureStateMachine` with real accessor/mutator functions, and verify the final state and audit log entries in the database.
+- REQ-027: The state machine SHALL have an integration test that verifies the retry-limit-exhaustion path (`pending -> sending -> not_sent -> sending -> failed`) using real SQLite storage. The test SHALL set `retry_count` equal to `retry_limit` before the final attempt and verify the soft-fail guard rejects `TriggerSoftFail`, causing the transition to `failed`. The audit log SHALL contain exactly 4 entries.
+- REQ-028: The worker SHALL have an integration test using real SQLite store (not spy/mock) that exercises full job processing: create a notification in the database, invoke the worker's `Handle` method, and verify the notification's final state and audit log entries are persisted in the database. This test SHALL cover the success path (`pending -> sending -> delivered`) and the soft-fail path (`pending -> sending -> not_sent`).
+
 ## Scenarios
 
 ### Scenario: Successful delivery path
@@ -111,3 +117,22 @@ Manages the lifecycle of a notification through a state machine implemented with
 - **When** the full lifecycle completes
 - **Then** the `state_transitions` table SHALL contain exactly 4 entries for this notification
 - **And** each entry SHALL have `entity_type` of `"notification"` and the correct `from_state` and `to_state`
+
+### Scenario: E2E retry lifecycle through delivery
+
+- **Given** the service is running with Mailpit as the SMTP backend
+- **And** a transient-failure email address (e.g., `test@fail.com` in QA builds) is used
+- **When** a POST request is sent to `/v1/notify` with the transient-failure address
+- **Then** the notification SHALL transition through `pending -> sending -> not_sent`
+- **And** the goqite visibility timeout SHALL trigger a retry: `not_sent -> sending`
+- **And** if the transient failure persists until the retry limit, the notification SHALL reach `failed`
+- **And** the final state SHALL be observable via `GET /v1/notifications`
+
+### Scenario: Integration test — worker processes job with real SQLite store
+
+- **Given** a real SQLite database (in-memory) with notification and goqite schemas
+- **And** a notification record exists with state `pending`
+- **When** the worker's `Handle` method is invoked with the notification's job payload
+- **Then** the notification's state in the database SHALL be `delivered` (success path) or `not_sent` (soft-fail path)
+- **And** the `state_transitions` table SHALL contain the correct audit log entries
+- **And** no mock or spy store SHALL be used — only the real `sqlite.Store`

@@ -50,6 +50,11 @@ Provides WebSocket-based real-time push updates to connected browser clients. Wh
 
 - REQ-015: When the server shuts down, the hub's context SHALL be cancelled, causing the run loop to exit and write pumps to close connections with `websocket.StatusNormalClosure`.
 
+### Test Coverage
+
+- REQ-024: The WebSocket broadcast SHALL have an E2E test that: (1) starts the service, (2) connects a WebSocket client to `/v1/ws`, (3) sends a `POST /v1/notify` request, (4) verifies the WebSocket client receives broadcast messages for each state transition (at minimum `sending` and `delivered`). The test SHALL use a real WebSocket connection, not a mock hub.
+- REQ-025: The WebSocket broadcast E2E test SHALL verify that each received message is valid JSON containing at minimum `id` (matching the notification ID) and `state` (matching the expected transition state).
+
 ## Scenarios
 
 ### Scenario: Connection accepted from allowed origin
@@ -128,3 +133,12 @@ Provides WebSocket-based real-time push updates to connected browser clients. Wh
 - **When** a new client attempts to register with the hub
 - **Then** the hub SHALL add the client to the client map
 - **And** the client SHALL receive subsequent broadcast messages
+
+### Scenario: E2E WebSocket broadcast on state transition
+
+- **Given** the service is running with Mailpit as the SMTP backend
+- **And** a WebSocket client is connected to `/v1/ws`
+- **When** a POST request is sent to `/v1/notify` with `{"email": "ws-e2e@company.com"}`
+- **Then** the WebSocket client SHALL receive a JSON message with `"state": "sending"` within 5 seconds
+- **And** the WebSocket client SHALL receive a JSON message with `"state": "delivered"` within 15 seconds
+- **And** each message SHALL contain the `id` field matching the notification ID from the 202 response

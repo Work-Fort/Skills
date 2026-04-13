@@ -44,6 +44,13 @@ Provides the reset endpoint for re-sending notifications, the paginated list end
 - REQ-024: When the notification is in `not_sent` state and `retry_count >= retry_limit` (retries exhausted), the reset endpoint SHALL allow the reset (same behavior as `failed` or `delivered`).
 - REQ-025: For notifications in `failed` or `delivered` state, the reset endpoint SHALL allow the reset regardless of `retry_count`.
 
+### Test Coverage
+
+- REQ-026: The health endpoint SHALL have a dedicated E2E test that starts the service binary, sends `GET /v1/health`, and verifies HTTP 200 with `{"status": "healthy"}` and `Content-Type: application/json`. This test SHALL NOT rely on the health check being a side-effect assertion inside another test.
+- REQ-027: The reset guard (REQ-023) SHALL have an E2E test that: (1) sends a notification to a transient-failure address (e.g., `test@fail.com` in QA builds) so it reaches `not_sent` with `retry_count < retry_limit`, (2) attempts `POST /v1/notify/reset` for that address, and (3) verifies HTTP 409 with `"notification has retries remaining"`.
+- REQ-028: The pagination endpoint SHALL have E2E tests covering edge cases: (a) `limit` values above 100 SHALL be clamped to 100, (b) `total_pages` SHALL be correctly calculated as `ceil(total_count / limit)`, (c) an empty notification list SHALL return `total_count: 0`, `total_pages: 0`, `has_more: false`, and an empty `notifications` array.
+- REQ-029: The reset guard SHALL have an integration test using real SQLite storage (not mocks) that: (1) creates a notification with state `not_sent` and `retry_count < retry_limit`, (2) invokes the reset guard check, and (3) verifies the guard returns `ErrRetriesRemaining`. The test SHALL also verify the converse: when `retry_count >= retry_limit`, the guard SHALL allow the reset.
+
 ### REST Framework
 
 - REQ-016: REST endpoints (except health) SHALL be registered using the `huma` framework via `humago.New` and `huma.Register`.
@@ -148,3 +155,44 @@ Provides the reset endpoint for re-sending notifications, the paginated list end
 - **When** the request is sent to `POST /v1/notify/reset`
 - **Then** the system SHALL return HTTP 400 Bad Request
 - **And** no notification state change SHALL occur
+
+### Scenario: E2E health endpoint returns healthy
+
+- **Given** the service is running with a reachable database
+- **When** a GET request is sent to `/v1/health`
+- **Then** the system SHALL return HTTP 200
+- **And** the response body SHALL be `{"status": "healthy"}`
+- **And** the `Content-Type` header SHALL be `application/json`
+
+### Scenario: E2E reset guard rejects not_sent with retries remaining
+
+- **Given** the service is running
+- **And** a notification exists with state `not_sent` and `retry_count` of 1 and `retry_limit` of 3 (retries still in progress)
+- **When** a POST request is sent to `/v1/notify/reset` for that notification's email
+- **Then** the system SHALL return HTTP 409 Conflict
+- **And** the response body SHALL contain `"notification has retries remaining"`
+
+### Scenario: E2E pagination with limit clamping
+
+- **Given** the service is running with at least 1 notification in the database
+- **When** a GET request is sent to `/v1/notifications?limit=200`
+- **Then** the system SHALL clamp the limit to 100
+- **And** the response SHALL contain at most 100 notifications
+
+### Scenario: E2E pagination with empty list
+
+- **Given** the service is running with 0 notifications in the database
+- **When** a GET request is sent to `/v1/notifications`
+- **Then** `meta.total_count` SHALL be `0`
+- **And** `meta.total_pages` SHALL be `0`
+- **And** `meta.has_more` SHALL be `false`
+- **And** the `notifications` array SHALL be empty
+
+### Scenario: Integration test — retry guard with real database
+
+- **Given** a real SQLite database (in-memory) with the notification schema
+- **And** a notification record exists with state `not_sent`, `retry_count` of 1, and `retry_limit` of 3
+- **When** the reset guard function (`CheckResetAllowed` or equivalent) is called with this notification
+- **Then** the guard SHALL return an error indicating retries are remaining
+- **And** when the same check is performed on a notification with `retry_count` of 3 and `retry_limit` of 3
+- **Then** the guard SHALL return nil (reset allowed)

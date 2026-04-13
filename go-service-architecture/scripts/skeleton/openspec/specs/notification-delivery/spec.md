@@ -58,6 +58,11 @@ Accepts notification requests via a REST endpoint, validates input, enforces one
 - REQ-025: The domain error `ErrNotFound` SHALL map to HTTP 404 Not Found at the handler layer.
 - REQ-026: Unhandled domain errors SHALL be logged via `slog.Error` and SHALL return HTTP 500 Internal Server Error.
 
+### Test Coverage
+
+- REQ-031: The `X-Request-ID` email header (REQ-023) SHALL have an E2E test that: (1) sends `POST /v1/notify`, (2) captures the `X-Request-ID` from the HTTP response header, (3) waits for email delivery to Mailpit, (4) retrieves the email from the Mailpit API, and (5) verifies the email's headers contain an `X-Request-ID` header whose value matches the response header from step 2.
+- REQ-032: The background queue SHALL have an integration test that exercises the full enqueue-dequeue-process cycle using real goqite with a real SQLite database (not mocks). The test SHALL: (1) create a notification in the database, (2) enqueue a job via `NotificationQueue.Enqueue`, (3) dequeue the job using goqite's `Receive` method, (4) verify the dequeued payload matches the enqueued notification ID. This tests the queue infrastructure independently of the worker logic.
+
 ### Port Interfaces
 
 - REQ-027: The `domain.EmailSender` interface SHALL define a `Send(ctx context.Context, msg *EmailMessage) error` method.
@@ -123,3 +128,20 @@ Accepts notification requests via a REST endpoint, validates input, enforces one
 - **Given** a POST request is sent to `/v1/notify` generating request ID `abc-123`
 - **When** the background worker sends the email
 - **Then** the email SHALL contain the header `X-Request-ID: abc-123`
+
+### Scenario: E2E Request ID propagated to Mailpit email
+
+- **Given** the service is running with Mailpit as the SMTP backend
+- **When** a POST request is sent to `/v1/notify` with `{"email": "reqid-e2e@company.com"}`
+- **And** the `X-Request-ID` value from the HTTP response header is captured
+- **And** the background worker delivers the email to Mailpit
+- **Then** the email in Mailpit SHALL contain an `X-Request-ID` header
+- **And** the email's `X-Request-ID` value SHALL match the value from the HTTP response header
+
+### Scenario: Integration test — queue enqueue and dequeue cycle
+
+- **Given** a real SQLite database (in-memory) with the goqite schema
+- **And** a `NotificationQueue` is created against this database
+- **When** a job payload is enqueued via `Enqueue`
+- **Then** a subsequent `Receive` call on the goqite queue SHALL return the enqueued message
+- **And** the message body SHALL match the original payload

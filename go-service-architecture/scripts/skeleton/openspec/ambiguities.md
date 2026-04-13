@@ -399,3 +399,43 @@
 **Decision made:** Updated REQ-051 to use `dark:text-gray-300` (matching the empty state fix). Did not add new requirements for NotificationRow or DarkModeToggle classes because the existing a11y test suite (REQ-038 through REQ-045) already enforces WCAG AA contrast on every story in both light and dark mode. The specific Tailwind classes are implementation details; the spec enforces the outcome (4.5:1 contrast ratio) rather than the mechanism.
 **Alternative interpretation:** The spec could prescribe exact Tailwind classes for every text element to prevent future regressions without relying on the a11y test suite.
 **Impact if wrong:** If the a11y test suite is ever removed or weakened, there would be no spec-level requirement preventing low-contrast Tailwind classes from being reintroduced in NotificationRow or DarkModeToggle.
+
+## E2E Retry Lifecycle -- Triggering Transient Failures Deterministically -- OPEN
+
+**Source says:** The audit identified a gap: no E2E test exercises the full retry lifecycle (`pending -> sending -> not_sent -> retry -> delivered`). The QA build has `@fail.com` (timeout/transient) and `@example.com` (permanent failure) simulated domains.
+**Ambiguity:** The `@fail.com` domain produces a transient error every time, so the notification will never reach `delivered` -- it will exhaust retries and transition to `failed`. To test the full retry-then-success path E2E, a mechanism is needed where the first N sends fail transiently but a subsequent send succeeds. The current simulated domain map is static (each domain always produces the same result). Without a "fail once then succeed" domain, the E2E test can only verify `pending -> sending -> not_sent -> ... -> failed`, not `not_sent -> sending -> delivered`.
+**Decision made:** The spec (notification-state-machine REQ-026) requires the E2E test to exercise the retry lifecycle. For the initial implementation, testing `pending -> sending -> not_sent -> sending -> failed` (retry exhaustion) is sufficient because it exercises all transitions except the final success after retry. The `not_sent -> sending -> delivered` path is already covered by integration tests with mock senders. A future enhancement could add a `@flaky.com` domain that fails on odd attempts and succeeds on even attempts.
+**Alternative interpretation:** The E2E test could use a real email address (not a simulated domain) with a deliberately misconfigured SMTP backend for the first attempt, then fix the config before the retry. This is fragile and complex.
+**Impact if wrong:** If the full retry-then-success path is required E2E, the current simulated domain map is insufficient. The test would need either a new simulated domain or a test-only configuration to control failure behavior.
+
+## E2E Reset Guard 409 -- Getting a Notification into not_sent State -- OPEN
+
+**Source says:** The audit identified a gap: no E2E test verifies the reset guard (HTTP 409 when `not_sent` with retries remaining). The spec (notification-management REQ-027) requires this E2E test.
+**Ambiguity:** To test the reset guard E2E, the test needs a notification in `not_sent` state with `retry_count < retry_limit`. In the QA build, `@fail.com` produces transient failures that transition to `not_sent`. But the automatic retry via goqite visibility timeout may pick up the job before the test has time to send the reset request. There is a race between the test's reset attempt and goqite's automatic retry.
+**Decision made:** The E2E test should poll `GET /v1/notifications` until the notification reaches `not_sent`, then immediately send the reset request. The goqite visibility timeout (default 30 seconds for `@fail.com` due to the simulated timeout delay) provides a window for the reset attempt. If the window is too narrow, the test timeout can be adjusted or the visibility timeout can be configured longer for test purposes.
+**Alternative interpretation:** The test could use a direct database manipulation to set the notification to `not_sent` state, bypassing the natural flow. This is more reliable but less "end-to-end."
+**Impact if wrong:** If the goqite retry fires before the reset request, the notification may have already transitioned out of `not_sent`, and the 409 assertion fails. The test would be flaky.
+
+## E2E Pagination Limit Clamping -- Where Is the Clamp Enforced -- OPEN
+
+**Source says:** The spec (notification-management REQ-009) says `limit` has a "maximum 100." The audit identified no E2E test for limit clamping.
+**Ambiguity:** Is the limit clamped silently (a request with `limit=200` is treated as `limit=100` and returns HTTP 200) or rejected (returns HTTP 400 for exceeding the maximum)? The spec says "maximum 100" but does not specify the behavior when exceeded.
+**Decision made:** The spec (notification-management REQ-028) assumes silent clamping: `limit=200` is treated as `limit=100`, the response contains at most 100 items, and the status is HTTP 200. This is the more common API pattern and matches the huma framework's default behavior for bounded integer parameters.
+**Alternative interpretation:** The API could reject `limit > 100` with HTTP 422 or HTTP 400, forcing the client to use a valid value.
+**Impact if wrong:** If the API rejects instead of clamping, E2E tests asserting HTTP 200 will fail. If the API clamps but the E2E test expects rejection, the test will also fail. The implementation must match the spec.
+
+## Integration Test Boundary -- Worker with Real Store vs Worker with Mock Store -- OPEN
+
+**Source says:** The audit identified that the existing worker tests (`internal/infra/queue/worker_test.go`) use a `spyStore` (in-memory mock), and the existing integration tests (`internal/infra/sqlite/statemachine_integration_test.go`) test the state machine with real SQLite but not the worker. There is no test combining the worker with real SQLite.
+**Ambiguity:** Should the "worker with real SQLite" integration test live in `internal/infra/sqlite/` (next to the existing state machine integration tests) or in `internal/infra/queue/` (next to the worker unit tests)? The test crosses two package boundaries: it needs the worker from `queue` and the store from `sqlite`.
+**Decision made:** The spec (notification-state-machine REQ-028) requires the test but does not prescribe the package location. The natural home is `internal/infra/sqlite/` because the existing integration tests there already import the domain package and exercise the store directly. The worker can be imported from `queue`. If import cycles prevent this, a separate `tests/integration/` directory is acceptable.
+**Alternative interpretation:** The test could live in `internal/infra/queue/` with an import of `sqlite.Open("")` for the test database. Or a top-level `tests/integration/` package could house all cross-package integration tests.
+**Impact if wrong:** If placed in the wrong package, import cycles may prevent compilation. The test would need to be moved.
+
+## Queue Integration Test -- Dequeue Mechanism -- OPEN
+
+**Source says:** The audit identified that the existing queue test (`internal/infra/queue/queue_test.go`) only tests `Enqueue` and verifies the row exists in the goqite table. There is no test for dequeue/receive.
+**Ambiguity:** The `NotificationQueue` type wraps goqite for enqueuing but does not expose a `Receive` or `Dequeue` method -- that is handled by `goqite.Queue.Receive()` directly. To test the full cycle, the integration test would need to call `goqite.NewQueue(goqite.NewQueueOpts{...})` to get a queue instance and call `Receive()` on it. This requires the test to know the queue name (`"notifications"`) and goqite API.
+**Decision made:** The spec (notification-delivery REQ-032) requires the test to exercise enqueue-then-dequeue. The test should create both the `NotificationQueue` (for enqueue) and a raw `goqite.Queue` (for receive/dequeue), sharing the same `*sql.DB`. This verifies that the `NotificationQueue`'s enqueue produces messages that goqite can receive, which is the integration contract that matters.
+**Alternative interpretation:** The test could skip the dequeue step and only verify the row exists (which the current test already does). But this does not test the actual goqite receive path.
+**Impact if wrong:** If the `NotificationQueue` enqueues with a different queue name or body format than goqite expects, the enqueue-only test would pass but the actual system would fail at dequeue time.
