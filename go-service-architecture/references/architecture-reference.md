@@ -139,21 +139,28 @@ only on domain ports, never on infrastructure.
 ```go
 var Version = "dev" // set via -ldflags at build time
 
-func newRootCmd() *cobra.Command {
+func NewRootCmd() *cobra.Command {
     cmd := &cobra.Command{
         Use:     "myservice",
         Version: Version,
         PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-            config.InitDirs()
-            return config.LoadConfig()
+            if err := config.InitDirs(); err != nil {
+                return err
+            }
+            return config.Load()
         },
+        // Silence Cobra's built-in error/usage printing so we
+        // control output via os.Exit in Execute().
+        SilenceUsage:  true,
+        SilenceErrors: true,
     }
-    cmd.AddCommand(daemon.NewCmd(), mcpbridge.NewCmd(), admin.NewCmd())
+    cmd.AddCommand(daemon.NewCmd(), mcpbridge.NewCmd())
     return cmd
 }
 
 func Execute() {
-    if err := newRootCmd().Execute(); err != nil {
+    if err := NewRootCmd().Execute(); err != nil {
+        fmt.Fprintln(os.Stderr, err)
         os.Exit(1)
     }
 }
@@ -174,11 +181,15 @@ import (
 
 var k = koanf.New(".")
 
-func LoadConfig(configPath string) error {
+func Load() error {
+    // Reset for testability — allows calling Load() multiple times
+    // in tests without accumulating state from prior calls.
+    K = koanf.New(".")
+
     // Load from YAML file (missing file is ok)
-    _ = k.Load(file.Provider(configPath), yaml.Parser())
+    _ = K.Load(file.Provider(ConfigPath()), yaml.Parser())
     // Load from environment — strip prefix, lowercase, replace _ with .
-    if err := k.Load(env.Provider("MYSERVICE_", ".", func(s string) string {
+    if err := K.Load(env.Provider("MYSERVICE_", ".", func(s string) string {
         return strings.ReplaceAll(
             strings.ToLower(strings.TrimPrefix(s, "MYSERVICE_")),
             "_", ".",
@@ -190,7 +201,7 @@ func LoadConfig(configPath string) error {
 }
 ```
 
-Access values via `k.String("port")`, `k.Int("port")`, etc.
+Access values via `K.String("port")`, `K.Int("port")`, etc.
 
 Koanf instances are not goroutine-safe for concurrent Load/Get. The
 package-level instance is safe when loaded once during startup and read
@@ -224,6 +235,7 @@ func Open(dsn string) (*Store, error) {
     if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
         return nil, fmt.Errorf("set busy timeout: %w", err)
     }
+    goose.SetLogger(goose.NopLogger()) // suppress migration output
     goose.SetBaseFS(migrations)
     if err := goose.SetDialect("sqlite3"); err != nil {
         return nil, fmt.Errorf("set dialect: %w", err)
@@ -602,6 +614,11 @@ Use `wneessen/go-mail` for SMTP sending. It supports STARTTLS, implicit
 TLS, and XOAUTH2 (required by Gmail and Microsoft). CGO-free, stdlib
 dependencies only.
 
+For local development (e.g., Mailpit on port 1025), use no auth and
+`TLSOpportunistic`. Production deployments would add
+`gomail.WithSMTPAuth`, `gomail.WithUsername`, `gomail.WithPassword`,
+and `gomail.WithTLSPolicy(gomail.TLSMandatory)`.
+
 ```go
 import gomail "github.com/wneessen/go-mail"
 
@@ -610,13 +627,10 @@ type SMTPSender struct {
     from   string
 }
 
-func NewSMTPSender(host string, port int, user, pass, from string) (*SMTPSender, error) {
+func NewSMTPSender(host string, port int, from string) (*SMTPSender, error) {
     c, err := gomail.NewClient(host,
         gomail.WithPort(port),
-        gomail.WithSMTPAuth(gomail.SMTPAuthPlain),
-        gomail.WithUsername(user),
-        gomail.WithPassword(pass),
-        gomail.WithTLSPolicy(gomail.TLSMandatory),
+        gomail.WithTLSPolicy(gomail.TLSOpportunistic),
     )
     if err != nil {
         return nil, fmt.Errorf("create smtp client: %w", err)
@@ -635,6 +649,12 @@ func (s *SMTPSender) Send(ctx context.Context, msg *EmailMessage) error {
     m.Subject(msg.Subject)
     m.SetBodyString(gomail.TypeTextHTML, msg.HTML)
     m.AddAlternativeString(gomail.TypeTextPlain, msg.Text)
+
+    // Propagate X-Request-ID into email headers for traceability.
+    if msg.RequestID != "" {
+        m.SetGenHeader(gomail.Header("X-Request-ID"), msg.RequestID)
+    }
+
     return s.client.DialAndSend(m)
 }
 ```
@@ -790,26 +810,35 @@ instead.
 
 ### Server Setup
 
+Use an exported `RunServer(ctx, cfg)` function that blocks until
+shutdown. This lets tests call it with a cancellable context.
+
 ```go
 type ServerConfig struct {
-    Bind  string
-    Port  int
-    Store domain.Store
+    Bind            string
+    Port            int
+    ShutdownTimeout time.Duration
+    // ... other fields (DSN, SMTP, etc.)
 }
 
-func NewServer(cfg ServerConfig) *http.Server {
+// RunServer starts the HTTP server and blocks until ctx is cancelled
+// or a fatal error occurs. Exported so tests can call it directly.
+func RunServer(ctx context.Context, cfg ServerConfig) error {
+    store, err := db.Open(cfg.DSN)
+    if err != nil {
+        return fmt.Errorf("open store: %w", err)
+    }
+    defer func() { _ = store.Close() }()
+
     mux := http.NewServeMux()
-    mux.HandleFunc("GET /v1/health", handleHealth(cfg.Store))
+    mux.HandleFunc("GET /v1/health", httpapi.HandleHealth(store))
 
-    api := humago.New(mux, huma.DefaultConfig("My Service", Version))
-    registerEntityRoutes(api, cfg.Store)
+    mcpHandler := mcp.NewMCPHandler(store, enqueuer, cfg.Version)
+    mux.Handle("/mcp/", http.StripPrefix("/mcp", mcpHandler))
 
-    mcpHandler := newMCPHandler(cfg.Store)
-    mux.Handle("/mcp", mcpHandler)
+    handler := httpapi.WithMiddleware(mux)
 
-    handler := withMiddleware(mux)
-
-    return &http.Server{
+    srv := &http.Server{
         Addr:              fmt.Sprintf("%s:%d", cfg.Bind, cfg.Port),
         Handler:           handler,
         ReadTimeout:       15 * time.Second,
@@ -817,6 +846,7 @@ func NewServer(cfg ServerConfig) *http.Server {
         IdleTimeout:       60 * time.Second,
         ReadHeaderTimeout: 5 * time.Second,
     }
+    // ... start server and handle shutdown (see Daemon Subcommand)
 }
 ```
 
@@ -868,9 +898,31 @@ func mapDomainErr(err error) error {
 
 ## Middleware
 
+Three layers, applied outermost-first: request ID, request logging,
+panic recovery. All exported for testing and reuse.
+
 ```go
-func withMiddleware(next http.Handler) http.Handler {
-    return withRequestLogging(withPanicRecovery(next))
+type contextKey string
+
+const requestIDKey contextKey = "request_id"
+
+// WithRequestID generates a unique request ID, stores it in context,
+// and sets the X-Request-ID response header. Outermost layer so all
+// downstream middleware and handlers can read it.
+func WithRequestID(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        reqID := domain.NewID("req")
+        w.Header().Set("X-Request-ID", reqID)
+        ctx := context.WithValue(r.Context(), requestIDKey, reqID)
+        next.ServeHTTP(w, r.WithContext(ctx))
+    })
+}
+
+func RequestIDFromContext(ctx context.Context) string {
+    if v, ok := ctx.Value(requestIDKey).(string); ok {
+        return v
+    }
+    return ""
 }
 
 type statusRecorder struct {
@@ -894,7 +946,7 @@ func (r *statusRecorder) Unwrap() http.ResponseWriter {
     return r.ResponseWriter
 }
 
-func withRequestLogging(next http.Handler) http.Handler {
+func WithRequestLogging(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         start := time.Now()
         rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
@@ -904,22 +956,32 @@ func withRequestLogging(next http.Handler) http.Handler {
             "path", r.URL.Path,
             "status", rec.status,
             "duration", time.Since(start),
+            "request_id", RequestIDFromContext(r.Context()),
         )
     })
 }
 
-func withPanicRecovery(next http.Handler) http.Handler {
+func WithPanicRecovery(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         defer func() {
-            if rec := recover(); rec != nil {
-                slog.Error("panic recovered", "error", rec)
-                if rw, ok := w.(*statusRecorder); ok && !rw.written {
+            if err := recover(); err != nil {
+                slog.Error("panic recovered",
+                    "error", err,
+                    "method", r.Method,
+                    "path", r.URL.Path,
+                )
+                if rec, ok := w.(*statusRecorder); ok && !rec.written {
                     http.Error(w, "internal server error", http.StatusInternalServerError)
                 }
             }
         }()
         next.ServeHTTP(w, r)
     })
+}
+
+// WithMiddleware applies the full stack: RequestID → Logging → PanicRecovery.
+func WithMiddleware(next http.Handler) http.Handler {
+    return WithRequestID(WithRequestLogging(WithPanicRecovery(next)))
 }
 ```
 
@@ -985,23 +1047,18 @@ email are especially sensitive. Options include `golang.org/x/time/rate`
 for in-process limiting or a reverse proxy (nginx, Caddy) for
 infrastructure-level limiting.
 
-**WebSocket Origin Validation.** Pass `&websocket.AcceptOptions` with
-an `OriginPatterns` list to `websocket.Accept` to prevent cross-site
-WebSocket hijacking.
+**WebSocket Origin Validation.** Implemented in `HandleWS` via
+`websocket.AcceptOptions{OriginPatterns}` (see WebSocket section).
 
-**WebSocket Read Limits.** Set `conn.SetReadLimit()` to prevent
-clients from sending arbitrarily large frames. If the server only
-broadcasts and discards incoming messages, a small limit (512 bytes)
-is sufficient.
+**WebSocket Read Limits.** Implemented in `ReadPump` via
+`SetReadLimit(512)` (see WebSocket section).
 
-**WebSocket Connection Limits.** Cap the number of concurrent
-WebSocket connections per IP or globally to prevent file descriptor
-exhaustion.
+**WebSocket Connection Limits.** Implemented in `NewHub(maxConns)`
+(see WebSocket section).
 
-**Error Response Sanitization.** Never expose `err.Error()` to
-clients — internal errors may contain database driver messages,
-connection strings, or file paths. Return a generic error message
-and log the real error server-side.
+**Error Response Sanitization.** Implemented in MCP tool handlers
+(see MCP section). Log real errors server-side, return generic
+messages to clients.
 
 ---
 
@@ -1009,22 +1066,39 @@ and log the real error server-side.
 
 ### Server Side
 
-Mount a `StreamableHTTPServer` at `/mcp`:
+Return a `*server.StreamableHTTPServer` so the caller can call
+`Shutdown` during graceful shutdown:
 
 ```go
-func newMCPHandler(store domain.Store) http.Handler {
-    s := server.NewMCPServer("myservice", Version)
-    s.AddTool(mcp.NewTool("list_entities",
-        mcp.WithDescription("List all entities"),
-    ), handleListEntities(store))
+func NewMCPHandler(store MCPStore, enqueuer domain.Enqueuer, version string) *server.StreamableHTTPServer {
+    s := server.NewMCPServer("myservice", version)
+    s.AddTool(mcp.NewTool("send_notification",
+        mcp.WithDescription("Send a notification email"),
+        mcp.WithString("email", mcp.Required(), mcp.Description("Email address")),
+    ), HandleSendNotification(store, enqueuer))
     return server.NewStreamableHTTPServer(s)
 }
 ```
 
-When mounting on an external mux, use `http.StripPrefix`:
+Mount with `http.StripPrefix`:
 
 ```go
 mux.Handle("/mcp/", http.StripPrefix("/mcp", mcpHandler))
+```
+
+### Error Sanitization
+
+MCP tool handlers log the real error server-side and return a generic
+message to the client. Never expose `err.Error()` to MCP clients.
+
+```go
+if err := store.CreateNotification(ctx, n); err != nil {
+    if errors.Is(err, domain.ErrAlreadyNotified) {
+        return mcp.NewToolResultError("already notified"), nil
+    }
+    slog.Error("create notification failed", "error", err)
+    return mcp.NewToolResultError("internal error"), nil
+}
 ```
 
 ### Bridge Subcommand
@@ -1044,7 +1118,9 @@ zero external deps). Import: `github.com/coder/websocket`.
 ### Hub Pattern
 
 A hub manages connected clients and broadcasts messages. Standard
-pattern for real-time dashboards.
+pattern for real-time dashboards. No mutex needed — the single-goroutine
+`Run` loop is the sole writer to the `clients` map; all external access
+goes through channels.
 
 ```go
 type Hub struct {
@@ -1052,23 +1128,32 @@ type Hub struct {
     broadcast  chan []byte
     register   chan *Client
     unregister chan *Client
-    mu         sync.Mutex
+    maxConns   int
 }
 
 type Client struct {
     hub  *Hub
-    conn *websocket.Conn
+    Conn *websocket.Conn
     send chan []byte
 }
 
-func NewHub() *Hub {
+// NewHub creates a hub. maxConns caps concurrent connections;
+// registrations above this limit are rejected.
+func NewHub(maxConns int) *Hub {
     return &Hub{
         clients:    make(map[*Client]struct{}),
         broadcast:  make(chan []byte, 256),
         register:   make(chan *Client),
         unregister: make(chan *Client),
+        maxConns:   maxConns,
     }
 }
+
+// Register adds a client via the channel (goroutine-safe).
+func (h *Hub) Register(c *Client) { h.register <- c }
+
+// Broadcast sends a message to all clients via the channel.
+func (h *Hub) Broadcast(msg []byte) { h.broadcast <- msg }
 
 func (h *Hub) Run(ctx context.Context) {
     for {
@@ -1076,27 +1161,26 @@ func (h *Hub) Run(ctx context.Context) {
         case <-ctx.Done():
             return
         case c := <-h.register:
-            h.mu.Lock()
-            h.clients[c] = struct{}{}
-            h.mu.Unlock()
+            if len(h.clients) >= h.maxConns {
+                close(c.send) // reject — WritePump detects and closes conn
+            } else {
+                h.clients[c] = struct{}{}
+            }
         case c := <-h.unregister:
-            h.mu.Lock()
             if _, ok := h.clients[c]; ok {
                 delete(h.clients, c)
                 close(c.send)
             }
-            h.mu.Unlock()
         case msg := <-h.broadcast:
-            h.mu.Lock()
             for c := range h.clients {
                 select {
                 case c.send <- msg:
                 default:
+                    // Slow client — drop it.
                     delete(h.clients, c)
                     close(c.send)
                 }
             }
-            h.mu.Unlock()
         }
     }
 }
@@ -1104,9 +1188,11 @@ func (h *Hub) Run(ctx context.Context) {
 
 ### Client Read/Write Pumps
 
+Exported so handler code can call them directly.
+
 ```go
-func (c *Client) writePump(ctx context.Context) {
-    defer c.conn.Close(websocket.StatusNormalClosure, "closing")
+func (c *Client) WritePump(ctx context.Context) {
+    defer func() { _ = c.Conn.Close(websocket.StatusNormalClosure, "closing") }()
     for {
         select {
         case <-ctx.Done():
@@ -1115,18 +1201,18 @@ func (c *Client) writePump(ctx context.Context) {
             if !ok {
                 return
             }
-            if err := c.conn.Write(ctx, websocket.MessageText, msg); err != nil {
+            if err := c.Conn.Write(ctx, websocket.MessageText, msg); err != nil {
                 return
             }
         }
     }
 }
 
-func (c *Client) readPump(ctx context.Context) {
+func (c *Client) ReadPump(ctx context.Context) {
     defer func() { c.hub.unregister <- c }()
+    c.Conn.SetReadLimit(512) // prevent memory exhaustion from large frames
     for {
-        // Read detects disconnects; discard payload if no client messages expected.
-        if _, _, err := c.conn.Read(ctx); err != nil {
+        if _, _, err := c.Conn.Read(ctx); err != nil {
             return
         }
     }
@@ -1135,19 +1221,27 @@ func (c *Client) readPump(ctx context.Context) {
 
 ### HTTP Upgrade Handler
 
+The `connCtx` parameter provides the lifecycle context for connections.
+After `websocket.Accept` hijacks the connection, `r.Context()` is
+unreliable (may be cancelled when the handler returns). Use a context
+derived from the hub's lifecycle instead.
+
+Origin validation is enforced via `websocket.AcceptOptions{OriginPatterns}`.
+
 ```go
-func handleWS(hub *Hub) http.HandlerFunc {
+func HandleWS(hub *Hub, connCtx context.Context, allowedOrigins []string) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
-        conn, err := websocket.Accept(w, r, nil)
+        conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+            OriginPatterns: allowedOrigins,
+        })
         if err != nil {
             return // Accept writes the HTTP error
         }
-        client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
-        hub.register <- client
+        client := NewClient(hub, conn)
+        hub.Register(client)
 
-        ctx := r.Context()
-        go client.writePump(ctx)
-        client.readPump(ctx) // blocks until disconnect
+        go client.WritePump(connCtx)
+        client.ReadPump(connCtx) // blocks until disconnect
     }
 }
 ```
@@ -1157,14 +1251,19 @@ func handleWS(hub *Hub) http.HandlerFunc {
 Mount on the server mux alongside REST routes:
 
 ```go
-mux.HandleFunc("/v1/ws", handleWS(hub))
+mux.HandleFunc("GET /v1/ws", ws.HandleWS(hub, hubCtx, allowedOrigins))
 ```
 
-Start the hub in the daemon's `RunE` before the HTTP server:
+Start the hub in the daemon before the HTTP server, with a separate
+context so write pumps can still dispatch messages during graceful
+shutdown:
 
 ```go
-hub := NewHub()
-go hub.Run(ctx)
+hubCtx, hubCancel := context.WithCancel(context.Background())
+defer hubCancel()
+
+hub := ws.NewHub(1000) // max concurrent connections
+go hub.Run(hubCtx)
 ```
 
 Broadcast state changes from the service/store layer:
@@ -1178,26 +1277,23 @@ func (s *Service) UpdateStatus(ctx context.Context, id string, status Status) er
     s.hub.Broadcast(msg)
     return nil
 }
-
-// Broadcast is a convenience method on Hub.
-func (h *Hub) Broadcast(msg []byte) {
-    h.broadcast <- msg
-}
 ```
 
 ---
 
 ## Health Endpoint
 
+Accept the narrow `domain.HealthChecker` interface, not the full `Store`:
+
 ```go
-func handleHealth(store domain.Store) http.HandlerFunc {
+func HandleHealth(checker domain.HealthChecker) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
-        err := store.Ping(r.Context())
+        err := checker.Ping(r.Context())
         status := "healthy"
-        httpCode := 200
+        httpCode := http.StatusOK
         if err != nil {
             status = "unhealthy"
-            httpCode = 503
+            httpCode = http.StatusServiceUnavailable
         }
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(httpCode)
@@ -1211,6 +1307,9 @@ func handleHealth(store domain.Store) http.HandlerFunc {
 
 ## Daemon Subcommand
 
+The `RunE` parses flags and delegates to `RunServer`, which is exported
+so tests can call it with a cancellable context.
+
 ```go
 func NewCmd() *cobra.Command {
     cmd := &cobra.Command{
@@ -1221,59 +1320,73 @@ func NewCmd() *cobra.Command {
     cmd.Flags().String("bind", "127.0.0.1", "Bind address")
     cmd.Flags().Int("port", 8080, "Listen port")
     cmd.Flags().String("db", "", "Database path")
+    cmd.Flags().Int("shutdown-timeout", 60, "Shutdown timeout in seconds")
     return cmd
 }
 
 func run(cmd *cobra.Command, args []string) error {
-    store, err := infra.Open(k.String("db"))
-    if err != nil {
-        return err
-    }
-    defer store.Close()
-
-    srv := daemon.NewServer(daemon.ServerConfig{
-        Bind:  k.String("bind"),
-        Port:  k.Int("port"),
-        Store: store,
-    })
-
-    // graceful shutdown
     ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
     defer stop()
-    errCh := make(chan error, 1)
-    go func() {
-        if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-            errCh <- err
-        }
-    }()
-    select {
-    case <-ctx.Done():
-    case err := <-errCh:
-        return err
-    }
-    shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-    defer cancel()
-    return srv.Shutdown(shutdownCtx)
+    return RunServer(ctx, ServerConfig{...})
 }
 ```
 
-If the service uses MCP with SSE streaming, shut down the
-`StreamableHTTPServer` separately:
+### Separate Contexts per Subsystem
+
+Each long-running subsystem (hub, job runner) gets its own context
+derived from `context.Background()` — not from the signal context.
+This allows ordered shutdown: the signal context triggers shutdown, but
+subsystem contexts are cancelled individually in the correct sequence.
 
 ```go
-mcpHandler.Shutdown(shutdownCtx) // signal SSE clients to reconnect
+hubCtx, hubCancel := context.WithCancel(context.Background())
+defer hubCancel()
+go hub.Run(hubCtx)
+
+runnerCtx, runnerCancel := context.WithCancel(context.Background())
+defer runnerCancel()
+runnerDone := make(chan struct{})
+go func() {
+    runner.Start(runnerCtx)
+    close(runnerDone)
+}()
 ```
 
-### Graceful Shutdown with Background Queue
+### Ordered Graceful Shutdown
 
-Stop the job runner before closing the store:
+A 5-step sequence ensures no messages are lost and no database calls
+happen after the store is closed. The shutdown timeout is configurable
+(default 60s).
 
 ```go
-shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-defer cancel()
-srv.Shutdown(shutdownCtx)
-runnerCancel() // cancels the context passed to r.Start
-store.Close()
+shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+defer shutdownCancel()
+
+// 1. Drain HTTP — reject new requests, let in-flight handlers finish.
+if err := srv.Shutdown(shutdownCtx); err != nil {
+    slog.Error("http shutdown", "error", err)
+}
+
+// 2. Signal MCP SSE clients to reconnect.
+if err := mcpHandler.Shutdown(shutdownCtx); err != nil {
+    slog.Error("mcp shutdown", "error", err)
+}
+
+// 3. Cancel hub — write pumps close WS connections with StatusNormalClosure.
+hubCancel()
+
+// 4. Cancel runner — job runner drains current job, then exits.
+runnerCancel()
+
+// 5. Wait for in-flight jobs, bounded by shutdown timeout.
+select {
+case <-runnerDone:
+    slog.Info("runner stopped")
+case <-shutdownCtx.Done():
+    slog.Warn("shutdown timeout waiting for runner")
+}
+
+// 6. Store close happens via defer.
 ```
 
 ---
