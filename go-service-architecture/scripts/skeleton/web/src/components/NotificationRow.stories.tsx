@@ -82,6 +82,30 @@ export const NotSent: Story = {
   },
 }
 
+export const NotSentRetryInProgress: Story = {
+  args: {
+    notification: {
+      id: 'ntf_retry01',
+      email: 'retrying@company.com',
+      status: 'not_sent',
+      retry_count: 1,
+      retry_limit: 3,
+    },
+  },
+}
+
+export const NotSentRetriesExhausted: Story = {
+  args: {
+    notification: {
+      id: 'ntf_exhausted01',
+      email: 'exhausted@company.com',
+      status: 'not_sent',
+      retry_count: 3,
+      retry_limit: 3,
+    },
+  },
+}
+
 export const Resending: Story = {
   args: {
     notification: {
