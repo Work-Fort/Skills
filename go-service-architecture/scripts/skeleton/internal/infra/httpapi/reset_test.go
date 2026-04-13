@@ -31,6 +31,15 @@ func newResetStubStore() *resetStubStore {
 	}
 }
 
+func (s *resetStubStore) GetNotificationByEmail(_ context.Context, email string) (*domain.Notification, error) {
+	n, ok := s.notifications[email]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	cp := *n
+	return &cp, nil
+}
+
 func (s *resetStubStore) NotificationStateAccessor(notificationID string) func(ctx context.Context) (stateless.State, error) {
 	return func(_ context.Context) (stateless.State, error) {
 		for _, n := range s.notifications {
@@ -241,36 +250,8 @@ func TestHandleResetOversizedBody(t *testing.T) {
 	}
 }
 
-// resetCopyStore returns a copy from GetNotificationByEmail so that the
-// state-machine mutator and the caller's local struct are decoupled,
-// matching real SQLite/Postgres store behavior.
-type resetCopyStore struct {
-	resetStubStore
-}
-
-func newResetCopyStore() *resetCopyStore {
-	return &resetCopyStore{
-		resetStubStore: resetStubStore{
-			stubNotificationStore: stubNotificationStore{
-				notifications: make(map[string]*domain.Notification),
-			},
-		},
-	}
-}
-
-func (s *resetCopyStore) GetNotificationByEmail(_ context.Context, email string) (*domain.Notification, error) {
-	n, ok := s.notifications[email]
-	if !ok {
-		return nil, domain.ErrNotFound
-	}
-	// Return a copy, not a pointer into the map. This matches real
-	// store behavior where the struct is scanned from a query result.
-	cp := *n
-	return &cp, nil
-}
-
 func TestHandleResetStatusNotOverwritten(t *testing.T) {
-	store := newResetCopyStore()
+	store := newResetStubStore()
 	store.notifications["user@company.com"] = &domain.Notification{
 		ID:         "ntf_overwrite-1",
 		Email:      "user@company.com",

@@ -40,7 +40,8 @@ func (s *stubNotificationStore) GetNotificationByEmail(_ context.Context, email 
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
-	return n, nil
+	cp := *n
+	return &cp, nil
 }
 
 func (s *stubNotificationStore) UpdateNotification(_ context.Context, n *domain.Notification) error {
@@ -597,31 +598,8 @@ func TestResetNotificationToolUpdateErrorSanitized(t *testing.T) {
 	}
 }
 
-// resetCopyStore returns a copy from GetNotificationByEmail to decouple
-// the state-machine mutator from the caller's struct.
-type resetCopyStore struct {
-	stubNotificationStore
-}
-
-func newResetCopyStore() *resetCopyStore {
-	return &resetCopyStore{
-		stubNotificationStore: stubNotificationStore{
-			notifications: make(map[string]*domain.Notification),
-		},
-	}
-}
-
-func (s *resetCopyStore) GetNotificationByEmail(_ context.Context, email string) (*domain.Notification, error) {
-	n, ok := s.notifications[email]
-	if !ok {
-		return nil, domain.ErrNotFound
-	}
-	cp := *n
-	return &cp, nil
-}
-
 func TestResetNotificationStatusNotOverwritten(t *testing.T) {
-	store := newResetCopyStore()
+	store := newStubStore()
 	store.notifications["user@company.com"] = &domain.Notification{
 		ID:         "ntf_overwrite-mcp",
 		Email:      "user@company.com",
