@@ -159,6 +159,12 @@ Do NOT start writing the plan immediately. Understand the problem first:
 
 This applies to every plan regardless of perceived simplicity. "Simple" plans are where unexamined assumptions cause the most wasted work.
 
+- **Include dev tooling setup.** If the plan introduces an external
+  tool dependency (test server, mock service, database), the plan
+  MUST include a mise task to start it and documentation in the
+  README. A dependency that requires developers to "just know" to
+  start it manually is a plan failure.
+
 ### 2. Draft the plan
 
 Structure:

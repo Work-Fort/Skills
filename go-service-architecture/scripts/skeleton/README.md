@@ -23,20 +23,24 @@ Do not invoke `go`, `node`, or `npm` directly -- always use `mise run`.
 
 ## Quick Start
 
-### Dev (two terminals)
+### Dev (three terminals)
 
 ```sh
-mise run release:dev          # build debug binary with race detector
-./build/notifier daemon --dev # start server, proxies SPA to Vite
+mise run dev:mailpit          # start Mailpit (SMTP :1025, UI :8025)
 ```
 
 ```sh
 mise run dev:web              # start Vite dev server on :5173
 ```
 
-Open <http://localhost:8080>. Emails are sent through Mailpit (runs on
-`127.0.0.1:1025` by default); start it with `mailpit` and view messages at
-<http://localhost:8025>.
+```sh
+mise run release:dev          # build debug binary with race detector
+./build/notifier daemon --dev # start server, proxies SPA to Vite
+```
+
+Open <http://localhost:8080> for the dashboard, <http://localhost:8025>
+for the Mailpit email UI. Mailpit captures all emails sent by the dev
+build — no real SMTP server needed.
 
 ### QA (single binary, no external deps)
 

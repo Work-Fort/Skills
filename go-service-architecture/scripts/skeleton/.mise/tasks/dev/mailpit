@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Start Mailpit SMTP test server (UI on :8025, SMTP on :1025)"
+set -euo pipefail
+
+echo "Starting Mailpit..."
+echo "  SMTP: 127.0.0.1:1025"
+echo "  Web UI: http://127.0.0.1:8025"
+exec mailpit --smtp 127.0.0.1:1025 --listen 127.0.0.1:8025 -d ""

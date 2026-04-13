@@ -1,7 +1,29 @@
 #!/usr/bin/env bash
-#MISE description="Run end-to-end tests"
+#MISE description="Run end-to-end tests (starts Mailpit automatically)"
 #MISE depends=["build:go"]
 set -euo pipefail
+
+# Start Mailpit if not already running
+MAILPIT_PID=""
+if ! curl -sf http://127.0.0.1:8025/api/v1/info > /dev/null 2>&1; then
+  mailpit --smtp 127.0.0.1:1025 --listen 127.0.0.1:8025 -d "" -q &
+  MAILPIT_PID=$!
+  # Wait for Mailpit to be ready
+  for i in $(seq 1 20); do
+    if curl -sf http://127.0.0.1:8025/api/v1/info > /dev/null 2>&1; then
+      break
+    fi
+    sleep 0.25
+  done
+fi
+
+cleanup() {
+  if [ -n "$MAILPIT_PID" ]; then
+    kill "$MAILPIT_PID" 2>/dev/null || true
+    wait "$MAILPIT_PID" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
 
 cd tests/e2e
 go test -v -count=1 ./...
