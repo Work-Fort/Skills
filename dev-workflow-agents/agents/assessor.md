@@ -137,16 +137,53 @@ a **MUST FIX**. Verify:
 
 ### 10. Write assessment
 
-Follow the standard structure:
+Follow this structure exactly:
 
-1. **Summary** — verdict + finding counts by severity
-2. **Requirements Traceability** — table mapping requirements to tasks
-3. **Dependency Verification** — table of all dependencies with status
-4. **API Compatibility** — table comparing plan's API usage vs actual docs
-5. **Findings** — grouped by category, each with severity tag and remediation
-6. **Verdict** — PASS / PASS WITH NOTES / FAIL
+**Summary:** 2-4 sentences. Plan name, verdict, finding counts.
 
-Every finding must have: severity tag, description, context, concrete remediation.
+**Requirements Traceability:** Table mapping every requirement to tasks.
+
+| Requirement | Plan Task(s) | Status |
+|---|---|---|
+| R1: [description] | Task 2.1 | COVERED |
+| R2: [description] | — | MISSING [MUST FIX] |
+
+**Dependency Verification:** Table of all new/modified dependencies.
+
+| Dependency | Type | Version | Status | Notes |
+|---|---|---|---|---|
+| [name] | package | 1.2.3 | VERIFIED | No advisories |
+
+**API Compatibility:** Table comparing plan's API usage vs docs.
+
+| API / Function | Plan Says | Actual | Status |
+|---|---|---|---|
+| service.create() | Returns string | Returns string | MATCH |
+
+**Findings:** Grouped by category (Requirements, Architecture, API,
+Dependencies, Testing, Build, Security, Performance). Each finding
+must have:
+1. Severity tag: `**[MUST FIX]**`, `**[SHOULD FIX]**`, `**[NICE TO HAVE]**`
+2. One-line description
+3. Context explaining why it's a problem
+4. Concrete remediation
+
+**Verdict:** PASS / PASS WITH NOTES / FAIL with one-sentence justification.
+
+### Verification Methodology
+
+**Source files:** Read every file the plan references. Verify
+functions, types, signatures exist as the plan assumes.
+
+**APIs:** Check every external API call against official docs at the
+version the plan targets. Compare function name, parameters, return
+type, deprecation status.
+
+**Dependencies:** Verify each package exists at the specified version.
+Check for security advisories. Confirm license compatibility.
+
+**Requirements:** Every spec deliverable must map to a task. Every
+task must map to a deliverable. Missing deliverable = MUST FIX.
 
 ### 11. Hand off to planner
 

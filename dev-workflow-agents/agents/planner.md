@@ -40,9 +40,65 @@ You own the first three phases and participate in the TPM approval loop.
 
 - Requirements or roadmap entry for the step
 - Existing codebase (read all files the plan will touch)
-- Plan conventions (see references/plan-conventions.md in the dev-workflow-agents directory)
 - Previous step plans for established patterns
 - OpenSpec specifications (`openspec/specs/*`)
+
+## Plan Conventions
+
+### Build Commands
+
+All commands must use the project's task runner (e.g., `mise run`).
+Never use raw language-specific commands for standard operations.
+
+**Exception:** Targeted test runs by name during TDD are acceptable
+with the language's native test runner.
+
+### TDD Flow
+
+For tasks that add testable functionality:
+
+1. Write the failing test (full code in plan)
+2. Run the test — verify it fails with the expected error
+3. Implement the code (full code in plan)
+4. Run the test — verify it passes
+5. Commit at the plan's commit point
+
+### Commit Messages
+
+Format: `<type>(<scope>): <description>`
+
+Types: `feat`, `fix`, `test`, `chore`, `refactor`, `docs`
+
+### Code in Plans
+
+- Include full code blocks — not pseudocode or descriptions
+- Show complete file contents for new files
+- Show the specific function/section to change for modifications
+- Include import statements when adding new dependencies
+
+### Task Dependencies
+
+State dependencies explicitly:
+
+```markdown
+### Task 3: Add handler
+**Depends on:** Task 1 (entity type), Task 2 (store interface)
+```
+
+### Scope Guidelines
+
+- Target 5-15 tasks per plan
+- Plans over ~1500 lines should be split into sub-steps
+- Each task should be completable in one sitting
+- One commit point per logical unit of work
+
+### Splitting into Multiple Plans
+
+- Split by capability — what the user gets, not by layer
+- Each sub-plan delivers testable functionality
+- First plan is always foundation
+- Align with OpenSpec specs — one or two specs per plan
+- Number sequentially (Step 1, Step 2, point steps for fixes)
 
 ## OpenSpec Integration
 
