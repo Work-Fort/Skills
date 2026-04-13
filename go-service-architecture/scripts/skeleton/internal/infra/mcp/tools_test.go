@@ -596,3 +596,59 @@ func TestResetNotificationToolUpdateErrorSanitized(t *testing.T) {
 		t.Errorf("error text leaks internal details: %q", text)
 	}
 }
+
+// resetCopyStore returns a copy from GetNotificationByEmail to decouple
+// the state-machine mutator from the caller's struct.
+type resetCopyStore struct {
+	stubNotificationStore
+}
+
+func newResetCopyStore() *resetCopyStore {
+	return &resetCopyStore{
+		stubNotificationStore: stubNotificationStore{
+			notifications: make(map[string]*domain.Notification),
+		},
+	}
+}
+
+func (s *resetCopyStore) GetNotificationByEmail(_ context.Context, email string) (*domain.Notification, error) {
+	n, ok := s.notifications[email]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	cp := *n
+	return &cp, nil
+}
+
+func TestResetNotificationStatusNotOverwritten(t *testing.T) {
+	store := newResetCopyStore()
+	store.notifications["user@company.com"] = &domain.Notification{
+		ID:         "ntf_overwrite-mcp",
+		Email:      "user@company.com",
+		Status:     domain.StatusFailed,
+		RetryCount: 3,
+		RetryLimit: domain.DefaultRetryLimit,
+	}
+
+	enqueuer := &stubEnqueuer{}
+	handler := HandleResetNotification(store, enqueuer)
+
+	req := gomcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"email": "user@company.com"}
+
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("tool returned error: %v", result.Content)
+	}
+
+	n := store.notifications["user@company.com"]
+	if n.Status != domain.StatusPending {
+		t.Errorf("status = %v, want %v (status was overwritten by stale struct)", n.Status, domain.StatusPending)
+	}
+	if n.RetryCount != 0 {
+		t.Errorf("retry_count = %d, want 0", n.RetryCount)
+	}
+}

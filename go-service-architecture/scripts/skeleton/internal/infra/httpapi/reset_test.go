@@ -240,3 +240,67 @@ func TestHandleResetOversizedBody(t *testing.T) {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }
+
+// resetCopyStore returns a copy from GetNotificationByEmail so that the
+// state-machine mutator and the caller's local struct are decoupled,
+// matching real SQLite/Postgres store behavior.
+type resetCopyStore struct {
+	resetStubStore
+}
+
+func newResetCopyStore() *resetCopyStore {
+	return &resetCopyStore{
+		resetStubStore: resetStubStore{
+			stubNotificationStore: stubNotificationStore{
+				notifications: make(map[string]*domain.Notification),
+			},
+		},
+	}
+}
+
+func (s *resetCopyStore) GetNotificationByEmail(_ context.Context, email string) (*domain.Notification, error) {
+	n, ok := s.notifications[email]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	// Return a copy, not a pointer into the map. This matches real
+	// store behavior where the struct is scanned from a query result.
+	cp := *n
+	return &cp, nil
+}
+
+func TestHandleResetStatusNotOverwritten(t *testing.T) {
+	store := newResetCopyStore()
+	store.notifications["user@company.com"] = &domain.Notification{
+		ID:         "ntf_overwrite-1",
+		Email:      "user@company.com",
+		Status:     domain.StatusFailed,
+		RetryCount: 3,
+		RetryLimit: domain.DefaultRetryLimit,
+	}
+
+	enqueuer := &stubEnqueuer{}
+	handler := HandleReset(store, enqueuer)
+
+	body := `{"email": "user@company.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/notify/reset", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNoContent)
+	}
+
+	// The critical assertion: the notification in the store must be
+	// pending, not failed. Before the fix, UpdateNotification would
+	// overwrite the mutator's pending with the stale failed status.
+	n := store.notifications["user@company.com"]
+	if n.Status != domain.StatusPending {
+		t.Errorf("status = %v, want %v (status was overwritten by stale struct)", n.Status, domain.StatusPending)
+	}
+	if n.RetryCount != 0 {
+		t.Errorf("retry_count = %d, want 0", n.RetryCount)
+	}
+}

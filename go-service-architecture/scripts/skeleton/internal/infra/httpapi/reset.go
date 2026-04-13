@@ -82,6 +82,10 @@ func HandleReset(store domain.ResetStore, enqueuer domain.Enqueuer) http.Handler
 			// Non-fatal: the reset itself succeeded.
 		}
 
+		// Sync the in-memory struct with the status the mutator wrote to
+		// the DB, so UpdateNotification does not overwrite it.
+		n.Status = domain.StatusPending
+
 		// Clear retry count and timestamps (except created_at).
 		// REQ-004: clear retry_count. REQ-005: clear delivery results
 		// (status already reset by state machine; retry_count is the

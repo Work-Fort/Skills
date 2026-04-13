@@ -103,6 +103,10 @@ func HandleResetNotification(store domain.ResetStore, enqueuer domain.Enqueuer) 
 		_ = store.LogTransition(ctx, "notification", n.ID,
 			prevStatus, domain.StatusPending, domain.TriggerReset)
 
+		// Sync the in-memory struct with the status the mutator wrote to
+		// the DB, so UpdateNotification does not overwrite it.
+		n.Status = domain.StatusPending
+
 		n.RetryCount = 0
 		n.UpdatedAt = time.Time{}
 		if err := store.UpdateNotification(ctx, n); err != nil {
