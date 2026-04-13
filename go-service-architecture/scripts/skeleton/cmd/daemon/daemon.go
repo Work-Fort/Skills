@@ -176,7 +176,13 @@ func RunServer(ctx context.Context, cfg ServerConfig) error {
 	runner.Register("send_notification", worker.Handle)
 
 	// Start the job runner in a goroutine.
-	go runner.Start(runnerCtx)
+	// runnerDone closes when Start returns, signalling that all
+	// in-flight jobs have finished (REQ-017, REQ-018).
+	runnerDone := make(chan struct{})
+	go func() {
+		runner.Start(runnerCtx)
+		close(runnerDone)
+	}()
 
 	// Create the MCP handler.
 	mcpHandler := mcpinfra.NewMCPHandler(store, nq, cfg.Version)
@@ -243,7 +249,11 @@ func RunServer(ctx context.Context, cfg ServerConfig) error {
 		return fmt.Errorf("server error: %w", err)
 	}
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	shutdownTimeout := cfg.ShutdownTimeout
+	if shutdownTimeout == 0 {
+		shutdownTimeout = 60 * time.Second
+	}
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
 
 	// 1. Drain HTTP connections -- reject new requests, let
@@ -264,7 +274,16 @@ func RunServer(ctx context.Context, cfg ServerConfig) error {
 	// 4. Cancel runner -- job runner drains current job, then exits.
 	runnerCancel()
 
-	// 5. Close database (store.Close) happens in the existing defer
+	// 5. Wait for in-flight jobs to finish, bounded by shutdown
+	//    timeout so a stuck job cannot block forever (REQ-018).
+	select {
+	case <-runnerDone:
+		slog.Info("runner stopped")
+	case <-shutdownCtx.Done():
+		slog.Warn("shutdown timeout waiting for runner")
+	}
+
+	// 6. Close database (store.Close) happens in the existing defer
 	//    block above.
 	return nil
 }
