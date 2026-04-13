@@ -50,7 +50,7 @@ export function NotificationRow({
       <td className="whitespace-nowrap px-4 py-3 text-sm font-mono text-gray-600 dark:text-gray-300">
         {id}
       </td>
-      <td className="whitespace-nowrap px-4 py-3 text-sm">
+      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900 dark:text-gray-200">
         {email}
       </td>
       <td className="whitespace-nowrap px-4 py-3">

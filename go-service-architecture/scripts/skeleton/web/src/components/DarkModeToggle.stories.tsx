@@ -6,7 +6,7 @@ const meta = {
   tags: ['autodocs'],
   decorators: [
     (Story) => (
-      <div className="flex items-center gap-4 p-4">
+      <div className="flex items-center gap-4 p-4 bg-white dark:bg-brand-primary">
         <span className="text-sm text-gray-600 dark:text-gray-400">
           Click the toggle to switch themes:
         </span>

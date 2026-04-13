@@ -7,7 +7,7 @@ const meta = {
   tags: ['autodocs'],
   decorators: [
     (Story) => (
-      <table className="min-w-full">
+      <table className="min-w-full bg-white dark:bg-brand-primary">
         <tbody>
           <Story />
         </tbody>

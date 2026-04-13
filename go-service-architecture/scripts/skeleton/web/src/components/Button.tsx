@@ -27,13 +27,13 @@ export function Button({
     secondary:
       'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:ring-brand-accent dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700',
     success:
-      'bg-semantic-success-text text-white hover:opacity-90 focus:ring-semantic-success-text',
+      'bg-semantic-success-text text-white dark:text-gray-900 hover:opacity-90 focus:ring-semantic-success-text',
     warning:
-      'bg-semantic-warning-text text-white hover:opacity-90 focus:ring-semantic-warning-text',
+      'bg-semantic-warning-text text-white dark:text-gray-900 hover:opacity-90 focus:ring-semantic-warning-text',
     info:
-      'bg-semantic-info-text text-white hover:opacity-90 focus:ring-semantic-info-text',
+      'bg-semantic-info-text text-white dark:text-gray-900 hover:opacity-90 focus:ring-semantic-info-text',
     danger:
-      'bg-semantic-danger-text text-white hover:opacity-90 focus:ring-semantic-danger-text',
+      'bg-semantic-danger-text text-white dark:text-gray-900 hover:opacity-90 focus:ring-semantic-danger-text',
   }
 
   return (
