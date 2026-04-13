@@ -218,3 +218,15 @@ for the initial implementation but worth revisiting.
   jobs to complete (or timeout) before the store is closed. Either
   increase the shutdown timeout or add a `runner.Wait()` call
   between cancelling the runner and closing the store
+
+## #22 — Reset Button for Delivered Notifications
+
+- The dashboard has a Resend button for failed/not_sent but no way
+  to reset a delivered notification from the UI
+- The API supports `POST /v1/notify/reset` for delivered notifications
+  but this functionality isn't exposed in the dashboard
+- Add a "Reset" button on delivered notification rows that calls the
+  reset endpoint, re-enqueues delivery, and shows the state transition
+  in real time via WebSocket
+- This enables manual testing of the full reset → re-delivery cycle
+  directly from the dashboard
