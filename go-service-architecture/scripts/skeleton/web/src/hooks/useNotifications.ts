@@ -30,6 +30,10 @@ interface UseNotificationsResult {
   resend: (id: string) => Promise<void>
   /** Set of notification IDs currently being resent (for loading spinners). */
   resending: Set<string>
+  /** Reset a delivered notification back to pending. */
+  reset: (id: string) => Promise<void>
+  /** Set of notification IDs currently being reset (for loading spinners). */
+  resetting: Set<string>
 }
 
 const PAGE_SIZE = 20
@@ -39,6 +43,7 @@ export function useNotifications(): UseNotificationsResult {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [resending, setResending] = useState<Set<string>>(new Set())
+  const [resetting, setResetting] = useState<Set<string>>(new Set())
 
   // Cursor stack for pagination: each entry is the cursor that
   // produced the current page. Index 0 = first page (no cursor).
@@ -101,6 +106,15 @@ export function useNotifications(): UseNotificationsResult {
       )
       if (nonResendableStates.has(msg.state)) {
         setResending((prev) => {
+          if (!prev.has(msg.id)) return prev
+          const next = new Set(prev)
+          next.delete(msg.id)
+          return next
+        })
+      }
+      // Clear resetting spinner when state leaves delivered.
+      if (msg.state !== 'delivered') {
+        setResetting((prev) => {
           if (!prev.has(msg.id)) return prev
           const next = new Set(prev)
           next.delete(msg.id)
@@ -170,6 +184,28 @@ export function useNotifications(): UseNotificationsResult {
     [],
   )
 
+  const reset = useCallback(
+    async (id: string) => {
+      const notification = notificationsRef.current.find((n) => n.id === id)
+      if (!notification) return
+
+      setResetting((prev) => new Set(prev).add(id))
+      setError(null)
+      try {
+        await resetNotification(notification.email)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Reset failed')
+      } finally {
+        setResetting((prev) => {
+          const next = new Set(prev)
+          next.delete(id)
+          return next
+        })
+      }
+    },
+    [],
+  )
+
   return {
     notifications,
     loading,
@@ -184,5 +220,7 @@ export function useNotifications(): UseNotificationsResult {
     totalCount,
     resend,
     resending,
+    reset,
+    resetting,
   }
 }
