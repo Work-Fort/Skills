@@ -7,7 +7,7 @@ const meta = {
   decorators: [
     (Story) => (
       <div className="flex items-center gap-4 p-4">
-        <span className="text-sm text-gray-500 dark:text-gray-400">
+        <span className="text-sm text-gray-600 dark:text-gray-400">
           Click the toggle to switch themes:
         </span>
         <Story />
