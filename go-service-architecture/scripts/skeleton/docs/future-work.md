@@ -198,7 +198,7 @@ for the initial implementation but worth revisiting.
 - The `--db` flag should be ignored or overridden in QA builds, or
   the daemon should default to in-memory when built with the `qa` tag
 
-## #20 — Table Layout Shift on Resend Click
+## #20 — Table Layout Shift on Resend Click ✅
 
 - Clicking the Resend button causes the entire table to shift
   slightly to the left

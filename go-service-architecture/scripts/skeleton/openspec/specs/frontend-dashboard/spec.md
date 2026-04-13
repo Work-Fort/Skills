@@ -118,6 +118,15 @@ Provides a React SPA dashboard embedded in the Go binary for monitoring notifica
 - REQ-059: The `Pagination.stories.tsx` file SHALL include stories for: `ManyPages` (e.g., 10+ pages, current page in the middle showing ellipsis), `SinglePage` (1 page, controls hidden), `FirstPage` (current page is 1), `LastPage` (current page is the last), and `FewPages` (e.g., 5 pages, all page numbers visible without ellipsis).
 - REQ-060: The `useNotifications` hook SHALL expose `currentPage` (number, 1-indexed), `totalPages` (number), and `totalCount` (number) derived from the API response `meta.total_count` and `meta.total_pages`. It SHALL also expose a `goToPage(page: number)` callback.
 
+### Layout Stability
+
+- REQ-061: Interactive buttons whose visible text changes between states (e.g., "Resend" / "Resending...") SHALL have a stable rendered width that does not change when the text changes. The button SHALL use a CSS `min-width` (or equivalent constraint) that accommodates the widest text variant, preventing table column resize and layout shift on state change.
+- REQ-062: The Resend button in `NotificationRow` SHALL have a `min-width` that accommodates the "Resending..." label so that switching between "Resend" and "Resending..." does not cause the Actions column or the table to reflow.
+
+### Resend Race Condition
+
+- REQ-063: When the `useNotifications` hook receives a WebSocket update that changes a notification's state to a non-resendable state (`pending`, `sending`, or `delivered`), it SHALL immediately remove that notification's ID from the `resending` Set, regardless of whether the resend HTTP request has completed. This prevents a render frame where the button is simultaneously disabled (resending in progress) and absent (state no longer resendable).
+
 ## Scenarios
 
 ### Scenario: SPA served from embedded filesystem
@@ -299,8 +308,25 @@ Provides a React SPA dashboard embedded in the Go binary for monitoring notifica
 - **When** the dashboard loads
 - **Then** the pagination component SHALL NOT render page buttons or Previous/Next controls
 
+### Scenario: Resend button width remains stable during state change
+
+- **Given** a notification row with status `failed` and the Resend button visible
+- **When** the user clicks "Resend" and the button text changes to "Resending..."
+- **Then** the button's rendered width SHALL NOT change
+- **And** the Actions column width SHALL NOT change
+- **And** the table SHALL NOT shift horizontally
+
 ### Scenario: Storybook pagination stories exist
 
 - **Given** `Pagination.stories.tsx` is loaded in Storybook
 - **When** the stories list is displayed
 - **Then** stories SHALL exist for: `ManyPages`, `SinglePage`, `FirstPage`, `LastPage`, and `FewPages`
+
+### Scenario: WebSocket update clears resending state for non-resendable transition
+
+- **Given** the user has clicked "Resend" on notification `ntf_abc123` and the `resending` Set contains `ntf_abc123`
+- **And** the resend HTTP request has not yet completed
+- **When** a WebSocket message arrives setting `ntf_abc123` state to `pending`
+- **Then** the `useNotifications` hook SHALL remove `ntf_abc123` from the `resending` Set
+- **And** the notification row SHALL render with the `pending` StatusBadge and no Resend button
+- **And** there SHALL be no render frame where the button is both disabled and absent
