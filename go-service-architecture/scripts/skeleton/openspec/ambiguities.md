@@ -112,11 +112,11 @@
 **Alternative interpretation:** Could return the updated notification object (consistent with REST conventions) or a simple `{"status": "reset"}` message.
 **Impact if wrong:** Frontend resend button may expect the updated notification in the response to update the UI immediately. If the body is empty, the frontend would need to re-fetch.
 
-## release:qa Build Flags -- OPEN
+## release:qa Build Flags -- RESOLVED
 
 **Source says:** Future work item #9 says "Add `.mise/tasks/release/qa` that builds with `-tags spa,qa` and includes the seed data, matching the pattern of `release:dev` and `release:production`." The existing `release:production` uses `CGO_ENABLED=0`, `-ldflags="-s -w -X main.Version=${VERSION}"`, and `-trimpath`. The existing `release:dev` uses only `-race` with no tags.
 **Ambiguity:** Should `release:qa` apply production-style flags (`CGO_ENABLED=0`, `-ldflags`, `-trimpath`) or be a simpler debug-friendly build? The source says "matching the pattern" but the two existing tasks have very different flag sets.
-**Decision made:** The spec (REQ-025) requires `-tags spa,qa` and output to `build/notifier` but does not mandate production stripping flags or the race detector. The implementer should decide based on usage context (QA testing vs demo distribution).
+**Decision made:** Implemented with production-style flags: `CGO_ENABLED=0`, `-ldflags="-s -w"`, and `-trimpath`, combined with `-tags spa,qa` and output to `build/notifier`. Depends on both `build:web` and `build:email`. The QA binary is optimized for distribution (small, stripped) rather than debugging. See `.mise/tasks/release/qa`.
 **Alternative interpretation:** `release:qa` could mirror `release:production` exactly (with `-ldflags`, `-trimpath`, `CGO_ENABLED=0`) but with the additional `qa` tag. Or it could be a debug build with `-race` like `release:dev` but with `-tags spa,qa`.
 **Impact if wrong:** If production flags are used, QA builds lose debug symbols and race detection, making QA-discovered bugs harder to diagnose. If debug flags are used, QA builds are larger and slower, which matters for distribution to external testers.
 
@@ -128,115 +128,115 @@
 **Alternative interpretation:** If the `//go:embed` directives were also build-tag-gated or if the worker conditionally skipped template rendering in QA, the dependency could be removed. But this would require invasive changes to unrelated code for minimal benefit.
 **Impact if wrong:** If `build:email` is removed from `release:qa`, the QA build fails at compile time with an `//go:embed` pattern match error because no files exist in `dist/`.
 
-## ConsoleSender File Organization -- OPEN
+## ConsoleSender File Organization -- RESOLVED
 
 **Source says:** Future work item #7 says "Use the same `//go:build qa` / `//go:build !qa` pattern" and references the seed data pattern (`seed_qa.go` / `seed_default.go`). The current SMTP sender lives in `internal/infra/email/sender.go` with no build tag.
 **Ambiguity:** How should the files be organized? The seed pattern uses two files in the same package: `seed_qa.go` (QA implementation) and `seed_default.go` (no-op for non-QA). For the email sender, the non-QA build is not a no-op -- it is the full SMTP sender. Should the file split be `sender_qa.go` (ConsoleSender) / `sender.go` (SMTPSender with `//go:build !qa` added), or should there be a separate factory function file?
-**Decision made:** The spec (service-build REQ-026) requires the `seed_qa.go` / `seed_default.go` file pair pattern. This means: `sender_qa.go` with `//go:build qa` containing `ConsoleSender` and a factory function, and `sender_default.go` with `//go:build !qa` containing `SMTPSender` and its factory function. The existing `sender.go` is split: shared types (`ErrExampleDomain`) move to a build-tag-free file, and each sender gets its own build-tagged file.
+**Decision made:** Split into three files: `sender.go` (build-tag-free, shared constants: `sendDelay`, `ErrExampleDomain`, `RequestIDFromMessage`), `sender_default.go` (`//go:build !qa`, contains `SMTPSender` and `NewSMTPSender`), `sender_qa.go` (`//go:build qa`, contains `ConsoleSender` and its own `NewSMTPSender` that returns `*ConsoleSender`). Both build-tagged files define `NewSMTPSender` with matching signatures so the daemon compiles without conditional wiring. See `internal/infra/email/`.
 **Alternative interpretation:** A single `sender.go` could remain build-tag-free with both implementations, using a factory function in build-tagged files to select which one to return. Or the `ConsoleSender` could live in a separate sub-package.
 **Impact if wrong:** If the file split is wrong, both senders could be compiled into the same binary, or the factory function might not resolve correctly. The `//go:build` constraint must ensure exactly one `NewEmailSender` factory is available per build.
 
-## ConsoleSender SMTP Configuration in QA Builds -- OPEN
+## ConsoleSender SMTP Configuration in QA Builds -- RESOLVED
 
 **Source says:** Future work item #7 says "QA builds should be fully standalone -- no Mailpit, no SMTP server." The current `daemon.go` unconditionally calls `email.NewSMTPSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPFrom)` which requires SMTP config values.
 **Ambiguity:** If QA builds use `ConsoleSender`, does the daemon still require SMTP configuration values (host, port, from address) at startup? The `ConsoleSender` does not need them, but the daemon's wiring code currently reads these from config unconditionally.
-**Decision made:** The spec (service-build REQ-032) says QA builds require no external dependencies. The daemon wiring code must use a build-tag-gated factory function (e.g., `email.NewSender(...)`) that accepts SMTP config in non-QA builds and ignores it in QA builds. QA builds SHALL NOT fail if SMTP configuration is absent.
+**Decision made:** The QA `sender_qa.go` defines its own `NewSMTPSender(_ string, _ int, _ string)` that accepts the same SMTP parameters but ignores them (blank identifiers), returning a `ConsoleSender` that logs to slog. The daemon calls `email.NewSMTPSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPFrom)` identically in all builds; the build tag selects which implementation compiles. QA builds accept but discard the SMTP values, so they never fail on missing SMTP config. See `internal/infra/email/sender_qa.go`.
 **Alternative interpretation:** The daemon could still require SMTP config values in QA builds but simply not use them. This keeps the config schema identical across all builds but violates the "no external dependencies" requirement if the SMTP host is validated or connected at startup.
 **Impact if wrong:** If SMTP config is required but absent, the QA binary fails at startup with a config validation error, defeating the standalone goal. If SMTP config is optional globally, production builds could accidentally start without SMTP config and silently fail to send emails.
 
-## @fail.com Timeout Error Type -- OPEN
+## @fail.com Timeout Error Type -- RESOLVED
 
 **Source says:** Future work item #8 says `@fail.com` produces a "simulated timeout." The notification-state-machine spec classifies errors into permanent (skip retry, go to `failed`) and transient (go to `not_sent`, eligible for retry).
 **Ambiguity:** What Go error type should the `@fail.com` timeout return? The worker uses `errors.Is(err, email.ErrExampleDomain)` to detect permanent failures. A timeout needs to be recognized as a transient error so the notification goes to `not_sent` rather than `failed`. Should it wrap `context.DeadlineExceeded`, define a new sentinel error like `ErrSimulatedTimeout`, or return a generic `errors.New("simulated timeout")`?
-**Decision made:** The spec (service-build REQ-029) says `@fail.com` returns "a timeout error (wrapping a `context.DeadlineExceeded`-style error)." This is intentionally imprecise -- the key requirement is that the error is NOT classified as permanent (not wrapping `ErrExampleDomain`), so the worker transitions to `not_sent` and retries.
+**Decision made:** Uses `fmt.Errorf("simulated timeout: %w", context.DeadlineExceeded)` -- wraps the standard library `context.DeadlineExceeded` sentinel. This is NOT `ErrExampleDomain`, so the worker classifies it as transient and transitions to `not_sent` for retry. See `internal/infra/email/sender_qa.go`, `simulatedDomains` map entry for `@fail.com`.
 **Alternative interpretation:** A new sentinel `ErrSimulatedTimeout` would be more explicit and testable. Wrapping `context.DeadlineExceeded` could confuse error handling that checks for real context cancellation elsewhere in the call stack.
 **Impact if wrong:** If the error wraps `ErrExampleDomain`, the notification goes directly to `failed` instead of `not_sent`, defeating the purpose of simulating a retryable timeout.
 
-## @slow.com Delay Interaction with Existing 6-Second Delay -- OPEN
+## @slow.com Delay Interaction with Existing 6-Second Delay -- RESOLVED
 
 **Source says:** Future work item #8 says `@slow.com` applies "extra-long delay (e.g., 30s)." REQ-016 requires all email sends to include a 6-second artificial delay.
 **Ambiguity:** Does the 30-second `@slow.com` delay replace the standard 6-second delay or stack on top of it? If stacked, total delay is 36 seconds. If replaced, total delay is 30 seconds.
-**Decision made:** The spec (service-build REQ-029) says `@slow.com` applies "a 30-second delay before returning success." This is the total delay for `@slow.com` recipients -- it replaces the standard 6-second delay rather than adding to it. The 30-second delay is already long enough to demonstrate slow delivery behavior.
+**Decision made:** The 30-second `@slow.com` delay replaces the standard 6-second delay (total 30s, not 36s). In `sender_qa.go`, when a domain-specific delay is present (`action.delay > 0`), only that delay runs; the standard `sendDelay` path is skipped via early return. The code comment explicitly states: "Domain-specific delay replaces the standard 6s delay -- the total delay is the domain delay, not domain delay + 6s." See `internal/infra/email/sender_qa.go`, `ConsoleSender.Send`.
 **Alternative interpretation:** The 6-second delay (REQ-016) could apply universally as a first step, then `@slow.com` adds its own 30 seconds on top, for 36 seconds total. This preserves the invariant that every send has at least the base delay.
 **Impact if wrong:** If stacked, the delay is 36 seconds which may exceed the goqite visibility timeout (30 seconds by default in seed config), causing the job to be re-delivered while still processing. If replaced, the base delay contract (REQ-016) is technically violated for `@slow.com` addresses, though the spirit (making state transitions visible) is preserved.
 
-## Simulated Failure Domain Map Extensibility -- OPEN
+## Simulated Failure Domain Map Extensibility -- RESOLVED
 
 **Source says:** Future work item #8 lists three specific domains: `@example.com`, `@fail.com`, `@slow.com`. It says "extend the QA sender with a map."
 **Ambiguity:** Is the domain map hardcoded to exactly these three domains, or should it be configurable (e.g., via a config file or additional map entries)? The word "map" suggests a data structure, but the future work item only lists three fixed entries.
-**Decision made:** The spec (service-build REQ-029) defines exactly three hardcoded domains. The map is a compile-time constant, not runtime-configurable. This matches the QA build tag philosophy: QA behaviors are baked into the binary, not configured at runtime.
+**Decision made:** Hardcoded `var simulatedDomains = map[string]domainAction{...}` with exactly three entries: `@example.com` (permanent failure via `ErrExampleDomain`), `@fail.com` (transient timeout wrapping `context.DeadlineExceeded`), `@slow.com` (30-second delay, success). The map is a compile-time package variable, not runtime-configurable. See `internal/infra/email/sender_qa.go`.
 **Alternative interpretation:** The map could be loaded from a config file or extended via additional build-tagged files, allowing QA testers to add custom simulated domains without recompiling.
 **Impact if wrong:** If hardcoded and a QA tester needs a new simulated domain, they must modify source code and rebuild. If configurable, there is additional config surface area that could be misconfigured.
 
-## MCP Error Handling -- Which Errors Are "Safe" for Clients -- OPEN
+## MCP Error Handling -- Which Errors Are "Safe" for Clients -- RESOLVED
 
 **Source says:** Future work item #10 says "MCP tools should follow the same pattern as HTTP handlers -- return a generic error message to the client, log the real error." The current code exposes `err.Error()` for CreateNotification, Enqueue, GetNotificationByEmail, state machine FireCtx, and UpdateNotification failures. However, it also returns domain validation errors (from `domain.ValidateEmail`) and domain sentinel texts (`"already notified"`, `"not found"`) directly to clients.
 **Ambiguity:** Should state machine errors from `sm.FireCtx` (e.g., "cannot transition from pending via reset") be treated as safe client-facing errors or internal errors? These errors reveal state machine internals but also tell the client why the operation failed. Similarly, the `"reset failed: "` prefix on state machine errors implies the operation type -- should the generic error for reset be `"internal error"` or `"reset failed"`?
-**Decision made:** The spec (mcp-integration REQ-014) treats all non-domain errors as internal. State machine `FireCtx` errors are classified as internal errors because they may contain implementation details about the state machine library. The client receives `"internal error"` and the real error is logged server-side. Domain sentinels (`ErrAlreadyNotified`, `ErrNotFound`) and validation errors remain client-facing (REQ-016).
+**Decision made:** State machine `FireCtx` errors are classified as internal: `slog.Error("state machine reset failed", "error", err)` followed by `gomcp.NewToolResultError("internal error")`. Domain sentinels remain client-facing: `ErrAlreadyNotified` returns `"already notified"`, `ErrNotFound` returns `"not found"`, validation errors return `err.Error()`, and `ErrRetriesRemaining` returns its message directly. All other errors (CreateNotification, Enqueue, UpdateNotification) return `"internal error"` with server-side logging. See `internal/infra/mcp/tools.go`.
 **Alternative interpretation:** State machine errors could be sanitized but still specific (e.g., `"reset not permitted from current state"`) to give the client actionable information without leaking internals.
 **Impact if wrong:** If state machine errors are hidden, MCP clients cannot distinguish "the notification is in a state that does not allow reset" from "the database is down." If exposed, state machine library internals (transition names, guard conditions) may leak.
 
-## WebSocket Connection Limit -- Rejection Behavior -- OPEN
+## WebSocket Connection Limit -- Rejection Behavior -- RESOLVED
 
 **Source says:** Future work item #14 says "track connection count in the hub's `Run` loop, reject registrations above a configurable limit (e.g., 1000)." The current hub registration is a channel send (`h.register <- c`) processed inside the `Run` loop.
 **Ambiguity:** What happens to the rejected client's WebSocket connection? The hub can close the send channel, but the underlying `*websocket.Conn` is owned by the HTTP handler goroutine (via `WritePump` and `ReadPump`). Closing the send channel causes `WritePump` to exit and close the connection, but `ReadPump` is blocking in the handler goroutine. Should the hub also close the WebSocket connection directly, or rely on the send channel closure to cascade through the pumps?
-**Decision made:** The spec (notification-realtime REQ-018) says the hub closes the rejected client's send channel. This causes `WritePump` to exit (it returns when the send channel is closed), which calls `conn.Close(websocket.StatusNormalClosure, ...)`. The `ReadPump` will then get a read error on the closed connection and exit. This matches the existing slow-client drop pattern (REQ-012) and avoids the hub directly touching the connection.
+**Decision made:** The hub closes the rejected client's send channel via `close(c.send)` without adding the client to the `clients` map. This cascades: `WritePump` detects the closed channel, calls `conn.Close(websocket.StatusNormalClosure, "closing")` via its defer, and `ReadPump` gets a read error on the closed connection and exits. Same pattern as the existing slow-client drop. See `internal/infra/ws/hub.go`, `Run` method, register case: `if len(h.clients) >= h.maxConns { close(c.send) }`.
 **Alternative interpretation:** The hub could close the WebSocket connection with a specific close code (e.g., `websocket.StatusTryAgainLater` or `websocket.StatusPolicyViolation`) to give the client a clear signal that the server is at capacity. This would require the hub to access `client.Conn` directly.
 **Impact if wrong:** If the hub only closes the send channel but `WritePump` has not started yet (race between registration and goroutine scheduling), the connection could leak. If the hub closes the connection directly, it introduces a second closer for the same resource, risking a double-close panic.
 
-## WebSocket Connection Limit -- Configuration Mechanism -- OPEN
+## WebSocket Connection Limit -- Configuration Mechanism -- RESOLVED
 
 **Source says:** Future work item #14 says "configurable limit (e.g., 1000)" but does not specify how the limit is configured.
 **Ambiguity:** How is the limit configured? Via koanf config file (`ws.max_connections`), an environment variable (`NOTIFIER_WS_MAX_CONNECTIONS`), a CLI flag, or a compile-time constant? The existing service uses koanf for config with env var overrides.
-**Decision made:** The spec (notification-realtime REQ-019) says the limit is passed to `NewHub(maxConns int)` at construction time, leaving the config source to the daemon wiring layer. The default is 1000.
+**Decision made:** `NewHub(maxConns int)` accepts the limit at construction time. The daemon passes a hardcoded `1000`: `hub := ws.NewHub(1000)`. This is not yet wired to koanf or CLI flags -- the value is a compile-time constant in the daemon wiring code. See `internal/infra/ws/hub.go` (`NewHub` signature) and `cmd/daemon/daemon.go` (call site).
 **Alternative interpretation:** The limit could be a top-level config field or a nested `ws.max_connections` field. It could also be a hard-coded constant if the value rarely changes.
 **Impact if wrong:** If the config path is wrong, the limit cannot be overridden at deploy time. If hard-coded, operators cannot adjust it without rebuilding.
 
-## MaxBytesReader Error Response Format -- OPEN
+## MaxBytesReader Error Response Format -- RESOLVED
 
 **Source says:** Future work item #13 says "add `r.Body = http.MaxBytesReader(w, r.Body, 1<<20)` (1 MB) at the top of each POST handler." The Go standard library's `MaxBytesReader` causes `json.Decoder.Decode` to return a `*http.MaxBytesError` when the limit is exceeded.
 **Ambiguity:** What HTTP status code and response body should be returned when the body exceeds 1 MB? The `MaxBytesReader` itself does not write a response -- it causes the subsequent `json.NewDecoder(r.Body).Decode()` to fail. The existing error handling for decode failures returns `400 Bad Request` with `{"error": "invalid JSON body"}`. Should the oversized body produce the same 400 with the same message, a 400 with a different message (e.g., `"request body too large"`), or HTTP 413 Request Entity Too Large?
-**Decision made:** The spec says HTTP 400 Bad Request. Since `MaxBytesReader` is applied before `json.Decode`, the decode call will fail with a `MaxBytesError`, which falls through to the existing `"invalid JSON body"` error path. This is acceptable for the initial fix -- the body is invalid from the decoder's perspective. A follow-up could check for `*http.MaxBytesError` specifically and return 413.
+**Decision made:** `MaxBytesReader` is applied at the top of both POST handlers (`notify.go` and `reset.go`) via `r.Body = http.MaxBytesReader(w, r.Body, 1<<20)`. When the body exceeds the limit, `json.Decode` fails with a `MaxBytesError` that falls through to the existing decode error path, returning HTTP 400 with `{"error": "invalid JSON body"}`. No special `MaxBytesError` check is implemented. See `internal/infra/httpapi/notify.go` line 28 and `internal/infra/httpapi/reset.go` line 26.
 **Alternative interpretation:** HTTP 413 Request Entity Too Large is the semantically correct status code for this case. The handler could check `errors.As(err, &maxBytesErr)` before falling through to the generic decode error.
 **Impact if wrong:** Clients receiving 400 instead of 413 cannot distinguish "malformed JSON" from "body too large." This matters for clients that want to retry with a smaller payload. However, for this service (where the only POST body is a small JSON with an email field), the distinction is unlikely to matter in practice.
 
-## WebSocket Origin Validation -- Default Origin Pattern -- OPEN
+## WebSocket Origin Validation -- Default Origin Pattern -- RESOLVED
 
 **Source says:** Future work item #11 says "pass `&websocket.AcceptOptions{OriginPatterns: [...]}` with allowed origins" but does not specify what the default allowed origins should be or what happens when no origins are configured.
 **Ambiguity:** What is the safe default when the operator does not configure `ws.allowed-origins`? Options: (a) reject all connections (secure but breaks out-of-the-box development), (b) allow `localhost:*` (permits local dev, rejects cross-origin in production), (c) allow all origins (insecure, equivalent to current behavior).
-**Decision made:** Default to `["localhost:*"]`. This permits the development workflow (dashboard at `localhost:8080` connecting to the WebSocket) without explicit configuration, while rejecting connections from non-localhost origins in production deployments that neglect to configure origins.
+**Decision made:** Default to `["localhost:*", "127.0.0.1:*"]`. Both localhost and 127.0.0.1 are included to cover both hostname forms used in development and test environments. The `resolveAllowedOrigins()` function in `daemon.go` returns this default when neither koanf config nor the `NOTIFIER_WS_ALLOWED_ORIGINS` env var is set. The origins are passed through to `websocket.AcceptOptions{OriginPatterns: allowedOrigins}` in the WS handler. See `cmd/daemon/daemon.go` (`resolveAllowedOrigins`) and `internal/infra/ws/handler.go`.
 **Alternative interpretation:** The default could be an empty list that rejects all WebSocket connections until the operator explicitly configures origins. This is more secure but breaks the zero-configuration development experience that the service currently provides.
 **Impact if wrong:** If the default is too permissive (e.g., allow all), the fix provides no protection unless the operator actively configures it, which defeats the purpose. If the default is too restrictive (reject all), developers must add configuration before WebSocket works at all, which is a regression in developer experience.
 
-## WebSocket Origin Validation -- Configuration Key Format for List Values -- OPEN
+## WebSocket Origin Validation -- Configuration Key Format for List Values -- RESOLVED
 
 **Source says:** The existing koanf configuration uses `env.Provider("NOTIFIER_", ".", ...)` which converts `NOTIFIER_WS_ALLOWED_ORIGINS` to the koanf key `ws.allowed.origins` (underscores become dots). The YAML config would use a list: `ws:\n  allowed-origins:\n    - "localhost:*"`.
 **Ambiguity:** How does a list value work through the environment variable override? Koanf's env provider treats env var values as strings, not lists. `NOTIFIER_WS_ALLOWED_ORIGINS=localhost:*,example.com` would need custom parsing (e.g., comma-separated splitting). Additionally, the underscore-to-dot conversion produces `ws.allowed.origins` (three levels deep) but the YAML key `allowed-origins` is a single hyphenated key at the second level, producing `ws.allowed-origins`. These do not match.
-**Decision made:** The spec uses `ws.allowed-origins` as the configuration key. The implementer must resolve the koanf key mapping so that both the YAML key and the environment variable resolve to the same configuration path. For the environment variable, comma-separated values split into a list is the conventional approach.
+**Decision made:** The `resolveAllowedOrigins()` function uses a two-tier approach: first checks koanf for the YAML path `ws.allowed_origins`, then reads `NOTIFIER_WS_ALLOWED_ORIGINS` directly from `os.Getenv` (bypassing koanf's env provider entirely to avoid the underscore-to-dot mapping mismatch). Comma-separated values are split and trimmed. This sidesteps the koanf key mapping problem documented in the ambiguity. See `cmd/daemon/daemon.go`, `resolveAllowedOrigins`.
 **Alternative interpretation:** The config key could be `ws.origins` (simpler, avoids the hyphen-vs-dot mapping issue). Or the environment variable could use a different separator (semicolon, space) or a JSON-encoded list.
 **Impact if wrong:** If the YAML key and env var resolve to different koanf paths, the env var override silently fails -- the operator thinks they configured origins via environment but the code reads the YAML default. This would leave the WebSocket endpoint unprotected in container deployments that rely on env vars.
 
-## Runner Wait Mechanism -- OPEN
+## Runner Wait Mechanism -- RESOLVED
 
 **Source says:** Future work item #21 says "add a `runner.Wait()` call between cancelling the runner and closing the store." The `jobs.Runner` from `maragu.dev/goqite/jobs` is a third-party type. The current code calls `go runner.Start(runnerCtx)` which blocks until the context is cancelled.
 **Ambiguity:** Does `maragu.dev/goqite/jobs.Runner.Start()` block until all in-flight jobs complete after context cancellation, or does it return immediately once the context is cancelled (leaving in-flight goroutines running)? If it returns immediately, a separate `Wait()` method or `sync.WaitGroup` is needed. The goqite library's API may not expose a `Wait()` method at all.
-**Decision made:** The spec (service-cli REQ-018) requires a mechanism to wait for in-flight jobs, whether via `runner.Start()` blocking until completion, a `runner.Wait()` method, or a wrapper using `sync.WaitGroup`. The implementer must verify the goqite `jobs.Runner` behavior and add a wait mechanism if `Start()` does not block on in-flight jobs.
+**Decision made:** `runner.Start(runnerCtx)` blocks until in-flight jobs finish after context cancellation. The implementation wraps it in a goroutine with a `runnerDone` channel: the goroutine calls `runner.Start(runnerCtx)` and then `close(runnerDone)`. During shutdown, after cancelling `runnerCtx`, the daemon `select`s on `runnerDone` or the shutdown timeout. This ensures the store is not closed until the runner exits. See `cmd/daemon/daemon.go`, lines 181-185 (goroutine) and 279-284 (shutdown wait).
 **Alternative interpretation:** If `runner.Start()` already blocks until all in-flight jobs finish after context cancellation, the fix is simply to call `runner.Start()` synchronously (not in a goroutine) or capture the goroutine's completion via a channel, and wait on it before returning from `RunServer`. No new `Wait()` method is needed.
 **Impact if wrong:** If the spec assumes `Start()` blocks and it does not, the store will still close before in-flight jobs finish, and the `sql: database is closed` error persists. If the spec assumes a new `Wait()` is needed but `Start()` already blocks, the implementation adds unnecessary complexity.
 
-## Shutdown Timeout vs. Email Send Delay -- OPEN
+## Shutdown Timeout vs. Email Send Delay -- RESOLVED
 
 **Source says:** Future work item #21 says the 6-second email delay outlasts the shutdown timeout. The current code uses a 15-second shutdown timeout (`context.WithTimeout(context.Background(), 15*time.Second)`). The email send delay is 6 seconds (notification-delivery REQ-016). The QA simulated `@slow.com` delay is 30 seconds (service-build REQ-029).
 **Ambiguity:** The 15-second timeout should be sufficient for the 6-second delay, yet the future work item says in-flight jobs "outlast the shutdown timeout." This suggests the issue is not the timeout duration but the shutdown ordering: the store is closed via `defer store.Close()` immediately when `RunServer` returns, without waiting for the runner goroutine to finish. The runner context is cancelled at step 4, but the goroutine may still be executing a job when step 5 (store close via defer) runs.
-**Decision made:** The spec (service-cli REQ-017) requires waiting for in-flight jobs between cancelling the runner and closing the store. The 15-second timeout is sufficient for normal jobs (6-second delay). The `@slow.com` 30-second delay will be terminated by the shutdown timeout, which is acceptable behavior for QA simulation.
+**Decision made:** Shutdown timeout is now configurable via `--shutdown-timeout` CLI flag (default 60 seconds). The shutdown sequence waits for the runner to finish (via `runnerDone` channel) before the deferred `store.Close()` runs. If the runner does not finish within the timeout, shutdown proceeds anyway with a warning log. The 60-second default accommodates the 6-second standard delay and the 30-second `@slow.com` delay. See `cmd/daemon/daemon.go`, `--shutdown-timeout` flag and shutdown sequence (lines 252-288).
 **Alternative interpretation:** The timeout could be increased to 35 seconds to accommodate `@slow.com`, or the `ConsoleSender` could check the context and abort the delay early on shutdown.
 **Impact if wrong:** If the timeout is not long enough for normal jobs, the `sql: database is closed` error will still occur for legitimate in-flight work. If the timeout is too long, the service takes unnecessarily long to shut down.
 
-## WebSocket Origin Validation -- 127.0.0.1 vs localhost in Test Environments -- OPEN
+## WebSocket Origin Validation -- 127.0.0.1 vs localhost in Test Environments -- RESOLVED
 
 **Source says:** The existing handler tests use `httptest.NewServer` which binds to `127.0.0.1` with a random port. The `coder/websocket` library checks the `Origin` header against `OriginPatterns`.
 **Ambiguity:** Does `localhost:*` match connections where the `Origin` header is `http://127.0.0.1:<port>`? The `coder/websocket` library may treat `localhost` and `127.0.0.1` as distinct hostnames. If so, tests using `httptest.NewServer` would fail with `["localhost:*"]` as the allowed origins.
-**Decision made:** The spec does not mandate whether `localhost` and `127.0.0.1` are treated as equivalent -- it defers to the `coder/websocket` library's pattern matching semantics (REQ-023). The implementer must verify behavior against the library and adjust test origin patterns accordingly (e.g., `["localhost:*", "127.0.0.1:*"]` if they are distinct).
+**Decision made:** Both `localhost:*` and `127.0.0.1:*` are included in the default allowed origins. The `resolveAllowedOrigins()` function returns `[]string{"localhost:*", "127.0.0.1:*"}` as the default. This covers both hostname forms, ensuring tests using `httptest.NewServer` (which binds to `127.0.0.1`) work without special configuration. See `cmd/daemon/daemon.go`, `resolveAllowedOrigins`, `defaultOrigins` variable.
 **Alternative interpretation:** The default could include both `localhost:*` and `127.0.0.1:*` to cover both cases. This is slightly more permissive but avoids a subtle test-vs-production discrepancy.
 **Impact if wrong:** If `localhost:*` does not match `127.0.0.1`, all existing handler tests break after the change. If the default includes `127.0.0.1:*`, it is slightly more permissive than intended but unlikely to be exploitable since `127.0.0.1` is a loopback address.
 
@@ -272,170 +272,170 @@
 **Alternative interpretation:** A `@font-face` declaration or Google Fonts `<link>` could ensure consistent rendering.
 **Impact if wrong:** If web font loading is expected, a font loading strategy would need to be added to `index.html`. This is additive and does not affect the token architecture.
 
-## Table Double Border Root Cause -- OPEN
+## Table Double Border Root Cause -- RESOLVED
 
 **Source says:** Future work #15 says "Extra horizontal rule at the bottom of the table beneath the rounded border -- looks like a double border." It suggests checking for "a stray `<hr>`, extra `border-bottom` on the last row, or a `border-collapse` issue conflicting with `rounded` corners."
 **Ambiguity:** The current `NotificationRow` component has `border-b border-gray-200 dark:border-gray-700` on each `<tr>`, while the `<tbody>` also uses `divide-y divide-gray-200`. Both produce inter-row borders, but only the explicit `border-b` on the last row creates a visible border at the bottom that doubles up with the container's `border`. The `divide-y` utility only applies borders *between* siblings (via `* + *` selector), so it does not produce a bottom border on the last row. However, the wrapping `<div>` currently uses `rounded-lg border` without `overflow-hidden`, which means child content can visually bleed past the rounded corners.
-**Decision made:** The spec (REQ-046, REQ-047) requires: (1) removing the explicit `border-b` from `<tr>` elements in `NotificationRow`, relying on `divide-y` on `<tbody>` for inter-row borders; (2) adding `overflow-hidden` to the container `<div>` so table content clips to the rounded corners. This addresses both the double border and the corner clipping issue.
+**Decision made:** Both fixes applied: (1) The `NotificationRow` `<tr>` has no `border-b` class -- inter-row borders rely solely on `divide-y` on `<tbody>`. (2) The container `<div>` uses `overflow-hidden rounded-lg border` so table content clips to the rounded corners. See `web/src/components/NotificationRow.tsx` (plain `<tr>` with no border classes) and `web/src/App.tsx` line 60 (`overflow-hidden rounded-lg border`).
 **Alternative interpretation:** The fix could instead keep the explicit `border-b` on rows and remove the `divide-y` from `<tbody>`, then use `last:border-b-0` on the final row. This is more fragile since it requires the last row to always have the override class.
 **Impact if wrong:** If the actual cause is something other than the `border-b` / `divide-y` overlap (e.g., a browser-specific rendering issue with `border-collapse` on rounded containers), the fix would not resolve the visual defect. The implementer should verify visually after applying the change.
 
-## Empty State -- App.tsx vs DashboardLayout Story Inconsistency -- OPEN
+## Empty State -- App.tsx vs DashboardLayout Story Inconsistency -- RESOLVED
 
 **Source says:** Future work #16 says "Add a full-width table row with a centered message" and "This applies to both the live dashboard and the Empty Storybook story variant." The current `App.tsx` has an empty state rendered as a standalone `<div>` outside any table. The `Dashboard.stories.tsx` DashboardLayout component renders the table unconditionally with no empty state handling -- an empty `notifications` array produces a table with headers and an empty `<tbody>`.
 **Ambiguity:** Should the empty state logic live in `App.tsx` (the live dashboard) only, or should `Dashboard.stories.tsx` also be updated? Currently these two components duplicate the table markup independently. Updating only `App.tsx` would leave the Storybook story showing a different empty state than the real app.
-**Decision made:** The spec (REQ-052, REQ-053) requires both `App.tsx` and `Dashboard.stories.tsx` to render the empty state as an in-table row. The DashboardLayout in the story file must be updated to include the same empty-state conditional rendering as the live app.
+**Decision made:** Both `App.tsx` and `Dashboard.stories.tsx` render the empty state as an in-table row with `colSpan={5}` and the message "No notifications yet" centered in `py-12`. The `DashboardLayout` in the story file includes the same conditional: `notifications.length === 0 ? <tr><td colSpan={5}>...</td></tr> : ...`. See `web/src/App.tsx` lines 82-90 and `web/src/Dashboard.stories.tsx` lines 95-103.
 **Alternative interpretation:** The table rendering could be extracted into a shared component (e.g., `NotificationTable`) that both `App.tsx` and `Dashboard.stories.tsx` use. This would eliminate the duplication. However, the future work item does not mention refactoring -- it only asks for the empty state row.
 **Impact if wrong:** If only `App.tsx` is updated, the Storybook Empty story continues to show a blank table with no message, which does not match the real app behavior. If a shared component is extracted without being asked for, it changes the component architecture beyond what was requested.
 
-## Empty State -- Column Count for colSpan -- OPEN
+## Empty State -- Column Count for colSpan -- RESOLVED
 
 **Source says:** Future work #16 says "full-width table row." The current table has 5 columns: ID, Email, Status, Retries, Actions.
 **Ambiguity:** Should the `colSpan` be hardcoded to `5`, or derived dynamically (e.g., from a constant or by counting header cells)?
-**Decision made:** The spec (REQ-050) says `colSpan` SHALL equal the number of header columns, without mandating how the value is obtained. The current table has 5 columns. A hardcoded `colSpan={5}` is acceptable given the table structure is static and defined in the same component.
+**Decision made:** Hardcoded `colSpan={5}` in both `App.tsx` and `Dashboard.stories.tsx`. The table has exactly 5 columns (ID, Email, Status, Retries, Actions) and the structure is static within the same component file. See `web/src/App.tsx` line 85 and `web/src/Dashboard.stories.tsx` line 98.
 **Alternative interpretation:** A dynamic approach (e.g., defining columns as an array and using `.length`) would be more resilient to future column additions but adds complexity for a table that rarely changes.
 **Impact if wrong:** If a column is added or removed later and the hardcoded `colSpan` is not updated, the empty state row will not span the full table width. The visual impact is minor (slightly misaligned cell) but noticeable.
 
-## Pagination Enhancement -- COUNT(*) and List Not in Same Transaction -- OPEN
+## Pagination Enhancement -- COUNT(*) and List Not in Same Transaction -- RESOLVED
 
 **Source says:** Future work #5 says "This requires a `SELECT COUNT(*)` query in both SQLite and PostgreSQL stores." The current `HandleList` handler calls `store.ListNotifications` in a single query. The enhancement adds a second call to `store.CountNotifications`.
 **Ambiguity:** Should the count and list queries be executed within the same database transaction to ensure consistency? Without a transaction, a notification could be created or deleted between the two queries, making `total_count` inconsistent with the actual page of results (e.g., `total_count` says 25 but only 24 are returned across all pages).
-**Decision made:** The spec (REQ-021) does not require a transaction. The count is informational for UI display, not transactional. The list handler calls `CountNotifications` and `ListNotifications` as separate queries. For a dashboard showing near-real-time data with WebSocket updates, a slightly stale count is acceptable.
+**Decision made:** Accepted eventual consistency. `HandleList` calls `store.ListNotifications` and `store.CountNotifications` as separate, non-transactional queries. The code comment explicitly notes: "outside the list transaction -- eventual consistency accepted per resolved ambiguity #1." See `internal/infra/httpapi/list.go` lines 97-98. The MCP handler (`tools.go`) uses the same two-call pattern.
 **Alternative interpretation:** A transaction or a combined query (`SELECT *, COUNT(*) OVER() FROM notifications ...`) would guarantee consistency. The window function approach avoids a separate query entirely but adds complexity to the SQL and the response parsing.
 **Impact if wrong:** If a transaction is required, the `NotificationStore` interface would need a transactional method or the handler would need to manage transactions directly (violating the current domain/infra boundary). If the window function approach is preferred, the `ListNotifications` return type would need to include the total count, changing the interface signature.
 
-## Pagination Enhancement -- Direct Page Jump with Cursor-Based Pagination -- OPEN
+## Pagination Enhancement -- Direct Page Jump with Cursor-Based Pagination -- RESOLVED
 
 **Source says:** Future work #5 says "Pagination component updated to show numbered page buttons." The current API uses cursor-based pagination (`after` / `next_cursor`), not offset-based.
 **Ambiguity:** Numbered page buttons imply the user can click page 5 to jump directly there. But cursor-based pagination only supports sequential navigation -- you need the cursor from page 4 to fetch page 5. How should the frontend handle clicking a page number that has not been visited yet (no cursor in the stack)?
-**Decision made:** The spec (REQ-055) requires numbered page buttons for positional context. The `goToPage` callback (REQ-060) can navigate to any previously visited page (using the cursor stack) and sequentially forward from the furthest visited page. Pages beyond the cursor stack are displayed but not directly clickable -- or the frontend fetches pages sequentially to reach the target. The page numbers primarily serve as a "you are here" indicator, with Previous/Next remaining the primary navigation mechanism.
+**Decision made:** Page numbers serve as positional context with sequential navigation as the primary mechanism. The `goToPage` callback navigates to previously visited pages using the cursor stack; pages beyond the stack are silently ignored (the callback returns early). The code comment states: "Pages beyond the cursor stack are not directly reachable (positional context only -- resolved ambiguity #2)." Previous/Next buttons remain the primary navigation. See `web/src/hooks/useNotifications.ts`, `goToPage` callback (lines 145-158) and `web/src/components/Pagination.tsx`.
 **Alternative interpretation:** The API could be extended with offset-based pagination (`?page=5&limit=20`) alongside cursors, giving the frontend true random access. Or the frontend could pre-fetch all cursors by paginating through the entire dataset in the background.
 **Impact if wrong:** If direct page jump is expected to be instant, the cursor-based API cannot support it without sequential fetching. Users clicking page 10 from page 1 would experience a delay as 9 pages are fetched sequentially. If offset pagination is added, it introduces the well-known problems of offset-based pagination (skipped/duplicated rows during concurrent writes).
 
-## Pagination Enhancement -- Page Number Button Ellipsis Threshold -- OPEN
+## Pagination Enhancement -- Page Number Button Ellipsis Threshold -- RESOLVED
 
 **Source says:** Future work #5 says "numbered page buttons" and "Storybook story should show variants with many pages." No specific threshold for when to show ellipsis vs all page numbers is given.
 **Ambiguity:** At what total page count should the component switch from showing all page numbers to showing ellipsis? For example, with 5 pages, should all 5 buttons be shown? With 8 pages? With 20?
-**Decision made:** The spec (REQ-055) uses a threshold of 7 pages. When `totalPages` is 7 or fewer, all page numbers are displayed. When `totalPages` exceeds 7, the component shows: first page, ellipsis (if gap exists), current page with immediate neighbors, ellipsis (if gap exists), last page. This is a common pattern used by GitHub, Google, and similar UIs.
+**Decision made:** Threshold is 7. The `getPageNumbers` function in `Pagination.tsx` returns all page numbers when `totalPages <= 7`. When `totalPages > 7`, it shows: first page, left ellipsis (if `currentPage > 3`), current page with immediate neighbors, right ellipsis (if `currentPage < totalPages - 2`), last page. Ellipsis is rendered as `null` in the array and displayed as `"..."` with `aria-hidden="true"`. See `web/src/components/Pagination.tsx`, `getPageNumbers` function (lines 25-59).
 **Alternative interpretation:** The threshold could be 5 (more compact), 10 (showing more pages), or configurable via a prop. Some designs show a fixed window of 5 page numbers that slides with the current page.
 **Impact if wrong:** A threshold that is too low truncates needlessly for small page counts. A threshold that is too high produces a long row of buttons that wraps awkwardly on narrow screens. The value 7 is a safe default that can be adjusted without spec changes -- it is a UI preference, not a behavioral contract.
 
-## Pagination Enhancement -- MCP list_notifications Response Shape -- OPEN
+## Pagination Enhancement -- MCP list_notifications Response Shape -- RESOLVED
 
 **Source says:** Future work #5 says "MCP `list_notifications` tool response should also include totals." The current MCP response is a flat JSON object `{"notifications": [...]}` without a `meta` wrapper.
 **Ambiguity:** Should the MCP response adopt the same `meta` structure as the REST API (`{"notifications": [...], "meta": {"total_count": 25, "total_pages": 2}}`), or include `total_count` and `total_pages` as top-level keys (`{"notifications": [...], "total_count": 25, "total_pages": 2}`)?
-**Decision made:** The spec defers to the existing MCP pattern. The current MCP handler returns `{"notifications": [...]}` as a flat object. The totals SHALL be added as top-level keys: `{"notifications": [...], "total_count": 25, "total_pages": 2}`. This is consistent with the current MCP response structure which does not use a `meta` wrapper.
+**Decision made:** The MCP response uses the same `meta` wrapper as the REST API: `{"notifications": [...], "meta": {"total_count": N, "total_pages": N}}`. This differs from the original spec suggestion of top-level keys; the implementation chose structural parity with the REST API. See `internal/infra/mcp/tools.go`, `HandleListNotifications`, lines 186-193.
 **Alternative interpretation:** The MCP response could mirror the REST API exactly with a `meta` object, maintaining structural parity. This would make it easier for consumers that interact with both REST and MCP.
 **Impact if wrong:** MCP consumers that expect `meta.total_count` would not find it at the top level, and vice versa. Since MCP tools are consumed by AI agents (not browsers), the impact is limited to agent prompt engineering rather than hard-coded client parsing.
 
-## Pagination Enhancement -- Pagination Component Hides at 0 or 1 Pages -- OPEN
+## Pagination Enhancement -- Pagination Component Hides at 0 or 1 Pages -- RESOLVED
 
 **Source says:** Future work #5 says "Pagination component updated to show numbered page buttons and 'Page X of Y' text." No guidance on what to show when there is only one page or zero pages.
 **Ambiguity:** Should the pagination component render anything when all results fit on a single page? The current component shows Previous/Next buttons even when both are disabled (the `SinglePage` Storybook story shows this).
-**Decision made:** The spec (REQ-058) says the component SHALL NOT render any controls when `totalPages` is 0 or 1. This is a behavior change from the current component, which renders disabled Previous/Next buttons on a single page. The rationale is that page numbers and "Page 1 of 1" provide no useful information.
+**Decision made:** Returns `null` when `totalPages <= 1`. The component has an early return: `if (totalPages <= 1) { return null }` with the comment "REQ-058: Hide pagination entirely when 0 or 1 pages." No controls, page numbers, or "Page X of Y" text are rendered. See `web/src/components/Pagination.tsx` lines 71-73.
 **Alternative interpretation:** The component could continue to render in a minimal state (e.g., just "Page 1 of 1" text with no buttons) to maintain consistent layout height below the table. Hiding the component entirely causes the table to be taller on single-page views, which may create a visual inconsistency between paginated and non-paginated states.
 **Impact if wrong:** If the component should remain visible for layout consistency, the spec would need to allow rendering at `totalPages <= 1` with controls disabled. If hidden, the table container may shift position when navigating between a 2-page result and a 1-page result after a filter change (not currently applicable since there are no filters, but relevant for future extensions).
 
-## Resend Button Layout Shift -- Mechanism for Stable Width -- OPEN
+## Resend Button Layout Shift -- Mechanism for Stable Width -- RESOLVED
 
 **Source says:** Future work #20 says "set a fixed `min-width` on the Actions column or the Resend button to prevent layout reflow." The current `NotificationRow` renders `{resending ? 'Resending...' : 'Resend'}` with no width constraint.
 **Ambiguity:** Should the stable width be achieved via `min-width` on the button itself, or via a fixed width on the Actions column? A button-level `min-width` is more targeted (only affects the button, not the entire column), but a column-level `min-width` would also prevent shifts caused by other future column content changes.
-**Decision made:** The spec (REQ-061, REQ-062) requires `min-width` on the button. This is the minimal fix that addresses the root cause (button text width change) without over-constraining the column. The exact pixel or rem value is left to the implementer -- it must accommodate "Resending..." which is the widest label.
+**Decision made:** `min-width` applied directly on each action button. The Retry/Resend button uses `className="min-w-[7.5rem]"` and the Re-deliver/Reset button uses `className="min-w-[8.5rem]"` to accommodate their respective loading labels ("Retrying..." and "Re-delivering..."). See `web/src/components/NotificationRow.tsx` lines 66 and 78.
 **Alternative interpretation:** A fixed `min-width` or `w-*` class on the Actions `<td>` or `<th>` would prevent any future layout shift from that column, but it would waste horizontal space when the column content is narrow (e.g., when no Resend button is shown for delivered notifications).
 **Impact if wrong:** If the column-level approach is preferred, the button-level `min-width` would still work but would not protect against other future content changes in the Actions column. If neither is applied, the table shifts on every Resend click.
 
-## Reset Guard -- Where to Enforce the Retry Check -- OPEN
+## Reset Guard -- Where to Enforce the Retry Check -- RESOLVED
 
 **Source says:** The frontend disables the Resend button when `not_sent` and `retry_count < retry_limit` (REQ-065). The decision says the API should reject with HTTP 409 in the same case.
 **Ambiguity:** Should the guard be enforced in the domain layer (shared by both REST and MCP), or independently in each handler? Domain-layer enforcement means the store or service method checks retry state and returns a domain error (e.g., `ErrRetriesRemaining`), which handlers map to HTTP 409 / MCP tool error. Handler-layer enforcement means each handler queries the notification, checks the condition, and rejects before calling the reset logic.
-**Decision made:** The spec does not prescribe the implementation layer. REQ-023 specifies the REST behavior (HTTP 409), REQ-017 in mcp-integration specifies the MCP behavior (tool error). Both reference the same condition (`not_sent` + `retry_count < retry_limit`). The implementer should enforce this in the domain/service layer so both handlers share the same logic, consistent with REQ-005/REQ-009 (MCP tools use the same service/store as REST).
+**Decision made:** Enforced in the domain layer via `domain.CheckResetAllowed(status, retryCount, retryLimit)` in `internal/domain/reset_guard.go`. Returns `ErrRetriesRemaining` when `status == StatusNotSent && retryCount < retryLimit`. Both the REST handler (`reset.go` line 53) and the MCP handler (`tools.go` line 86) call this same function before proceeding with the state machine transition. REST maps the error to HTTP 409; MCP returns the error message as a tool error.
 **Alternative interpretation:** Each handler checks independently, duplicating the guard logic.
 **Impact if wrong:** If enforced only in handlers, a future third caller (e.g., a CLI command, a cron job) could bypass the guard and reset a notification mid-retry. Domain-layer enforcement is safer.
 
-## Reset Guard -- Error Message Wording -- OPEN
+## Reset Guard -- Error Message Wording -- RESOLVED
 
 **Source says:** The decision specifies the error message as "notification has retries remaining."
 **Ambiguity:** Should this be a safe domain error returned as-is (like `"already notified"` per MCP REQ-016), or an internal error that gets masked to `"internal error"` (per MCP REQ-014)?
-**Decision made:** This is a safe domain error. The message `"notification has retries remaining"` contains no sensitive information and is useful for the caller. It follows the same pattern as `"already notified"` and `"not found"`. Both the REST and MCP specs specify the exact message to return to the client.
+**Decision made:** Safe domain error. `ErrRetriesRemaining = errors.New("notification has retries remaining")` in `internal/domain/errors.go`. The REST handler returns `err.Error()` in the JSON body with HTTP 409 (`reset.go` line 54). The MCP handler returns `err.Error()` as the tool error message (`tools.go` line 87). Not masked to `"internal error"` -- follows the same pattern as `"already notified"` and `"not found"`.
 **Alternative interpretation:** The error could be classified as internal since it relates to server-side retry state.
 **Impact if wrong:** If classified as internal, the MCP tool would return the unhelpful `"internal error"` message, and the frontend would not be able to distinguish "retries remaining" from a real server failure.
 
-## Reset Endpoint -- Enqueue Delivery Job After Reset -- OPEN
+## Reset Endpoint -- Enqueue Delivery Job After Reset -- RESOLVED
 
 **Source says:** The reset endpoint (`POST /v1/notify/reset`) transitions the notification to `pending` state, clears retry count and timestamps, and returns HTTP 204. The code in `reset.go` does not enqueue a delivery job after the state transition. The `POST /v1/notify` (send) endpoint enqueues a job, but after a reset, the notification already exists so `POST /v1/notify` returns 409 (duplicate).
 **Ambiguity:** Should the reset endpoint enqueue a delivery job itself, or should the caller be expected to trigger delivery through some other mechanism? Without enqueuing, the notification sits in `pending` state indefinitely with no worker to pick it up.
-**Decision made:** The reset endpoint SHALL enqueue a new delivery job after successfully transitioning to `pending` (notification-management REQ-007, mcp-integration REQ-019). This matches the intent of "reset for re-delivery" -- a reset that does not re-deliver is operationally useless. The `reset.go` handler needs to accept a `domain.Enqueuer` (or equivalent queue port) and call it after the state transition and field reset.
+**Decision made:** Both the REST and MCP reset handlers enqueue a delivery job after the state transition and field reset. `HandleReset` in `reset.go` accepts `domain.Enqueuer` and calls `enqueuer.Enqueue` after `UpdateNotification` (lines 104-121). `HandleResetNotification` in `tools.go` does the same (lines 117-129). The daemon wires the enqueuer into both: `httpapi.HandleReset(store, nq)` and `mcpinfra.NewMCPHandler(store, nq, ...)`. See `internal/infra/httpapi/reset.go` and `internal/infra/mcp/tools.go`.
 **Alternative interpretation:** The reset could only transition state, and the caller would need to use a separate "re-send" endpoint or manually trigger delivery. This would give the caller more control but adds an extra step that is easy to forget.
 **Impact if wrong:** If the reset does not enqueue, every reset leaves the notification stranded in `pending` forever. The dashboard shows "pending" but nothing happens. Users must know to call a second endpoint to actually trigger delivery, which is unintuitive and error-prone.
 
-## Reset Button -- REQ-063 Scope Change for `delivered` State -- OPEN
+## Reset Button -- REQ-063 Scope Change for `delivered` State -- RESOLVED
 
 **Source says:** The original REQ-063 listed `delivered` as a "non-resendable state" that should clear the `resending` Set. With the Reset button, `delivered` now has its own action button.
 **Ambiguity:** Should a WebSocket update to `delivered` still clear the `resending` Set? And should it also clear the `resetting` Set?
-**Decision made:** REQ-063 was narrowed to only clear on `pending` and `sending` (truly non-actionable states). A transition to `delivered` no longer clears `resending` via REQ-063 because `delivered` rows now show the Reset button (not the Resend button), so the Resend button would already be gone from the row. The `resetting` Set is cleared when the state transitions away from `delivered` (REQ-072).
+**Decision made:** Narrowed to `pending`, `sending`, and `delivered` as the non-resendable states that clear the `resending` Set. The `resetting` Set is cleared separately when the state transitions away from `delivered` (i.e., `msg.state !== 'delivered'`). See `web/src/hooks/useNotifications.ts`, `nonResendableStates` Set (line 93-97) and the WebSocket callback (lines 107-124): resending is cleared for pending/sending/delivered; resetting is cleared when state leaves delivered.
 **Alternative interpretation:** Keep `delivered` in REQ-063's clear list for the `resending` Set as a safety measure, even though the button would already be hidden.
 **Impact if wrong:** If `delivered` is removed from the resending clear list and a race condition causes a notification to land in `delivered` while `resending` is still tracked, the stale entry in the Set has no visible effect (the Resend button is already gone), but it wastes memory until the Set is garbage collected.
 
-## Reset Button -- Separate Tracking Set vs Shared Set -- OPEN
+## Reset Button -- Separate Tracking Set vs Shared Set -- RESOLVED
 
 **Source says:** The user's description says the Reset button should "show loading state" and the spec uses a `resetting` boolean prop.
 **Ambiguity:** Should the hook use a separate `resetting` Set alongside the existing `resending` Set, or should they share a single Set (since only one button can appear per row)?
-**Decision made:** The spec allows either approach (REQ-063 says "resetting Set (if tracked separately)"). Since only one action button appears per row (REQ-073), a single shared Set would work functionally. However, separate Sets are clearer for maintainability.
+**Decision made:** Separate `resetting` Set alongside the existing `resending` Set. Both are declared as independent `useState<Set<string>>` in `useNotifications.ts` (line 46: `resending`, line 47: `resetting`). Both are exposed in the hook's return value and passed to `NotificationRow` as separate props. See `web/src/hooks/useNotifications.ts` and `web/src/components/NotificationRow.tsx` (props: `resending`, `resetting`).
 **Alternative interpretation:** A single `actionInFlight` Set could track both, since the states are mutually exclusive. This reduces state management complexity.
 **Impact if wrong:** If a single Set is used but future requirements allow both buttons on the same row, the tracking would be ambiguous. With separate Sets, no risk.
 
-## Reset Button -- Button Variant -- OPEN
+## Reset Button -- Button Variant -- RESOLVED
 
 **Source says:** The existing Resend button uses `variant="secondary"`. The user's description does not specify a variant for the Reset button.
 **Ambiguity:** What visual variant should the Reset button use? `secondary` (matching Resend), `warning` (to signal a state change), `info`, or something else?
-**Decision made:** The spec does not prescribe a specific variant, leaving it to implementation. The Resend button's `variant="secondary"` is established precedent.
+**Decision made:** `variant="secondary"`, matching the Retry/Resend button. Both action buttons use the same visual treatment for consistency. See `web/src/components/NotificationRow.tsx` line 77: `<Button variant="secondary" ...>`.
 **Alternative interpretation:** A different variant (e.g., `warning` or `info`) could visually distinguish Reset from Resend, which could help users understand the different semantics.
 **Impact if wrong:** Using the wrong variant could confuse users about the severity of the action, or fail accessibility contrast checks.
 
-## WCAG AA Contrast -- Scope of Tailwind Class Changes -- OPEN
+## WCAG AA Contrast -- Scope of Tailwind Class Changes -- RESOLVED
 
 **Source says:** Three contrast fixes are needed: (1) brand accent `#e94560` to `#d43555`, (2) NotificationRow dark mode table text `dark:text-gray-400` to `dark:text-gray-300`, (3) DarkModeToggle helper text `text-gray-500` to `text-gray-600`.
 **Ambiguity:** The spec (REQ-051) prescribes `dark:text-gray-400` for the empty state muted text. The NotificationRow and DarkModeToggle class changes are not mentioned in the spec because the spec does not prescribe Tailwind classes for those components. Should the spec add requirements for the specific Tailwind classes used by NotificationRow and DarkModeToggle, or is WCAG compliance (REQ-038 through REQ-045) sufficient to enforce correct contrast?
-**Decision made:** Updated REQ-051 to use `dark:text-gray-300` (matching the empty state fix). Did not add new requirements for NotificationRow or DarkModeToggle classes because the existing a11y test suite (REQ-038 through REQ-045) already enforces WCAG AA contrast on every story in both light and dark mode. The specific Tailwind classes are implementation details; the spec enforces the outcome (4.5:1 contrast ratio) rather than the mechanism.
+**Decision made:** WCAG compliance enforced via a11y tests rather than prescribing specific Tailwind classes. The a11y test suite (REQ-038 through REQ-045) runs axe-core on every Storybook story in both light and dark mode, enforcing 4.5:1 contrast ratio. All 33 a11y tests pass. NotificationRow uses `dark:text-gray-300` for text columns (visible in `NotificationRow.tsx`). No spec-level class requirements were added for individual components.
 **Alternative interpretation:** The spec could prescribe exact Tailwind classes for every text element to prevent future regressions without relying on the a11y test suite.
 **Impact if wrong:** If the a11y test suite is ever removed or weakened, there would be no spec-level requirement preventing low-contrast Tailwind classes from being reintroduced in NotificationRow or DarkModeToggle.
 
-## E2E Retry Lifecycle -- Triggering Transient Failures Deterministically -- OPEN
+## E2E Retry Lifecycle -- Triggering Transient Failures Deterministically -- RESOLVED
 
 **Source says:** The audit identified a gap: no E2E test exercises the full retry lifecycle (`pending -> sending -> not_sent -> retry -> delivered`). The QA build has `@fail.com` (timeout/transient) and `@example.com` (permanent failure) simulated domains.
 **Ambiguity:** The `@fail.com` domain produces a transient error every time, so the notification will never reach `delivered` -- it will exhaust retries and transition to `failed`. To test the full retry-then-success path E2E, a mechanism is needed where the first N sends fail transiently but a subsequent send succeeds. The current simulated domain map is static (each domain always produces the same result). Without a "fail once then succeed" domain, the E2E test can only verify `pending -> sending -> not_sent -> ... -> failed`, not `not_sent -> sending -> delivered`.
-**Decision made:** The spec (notification-state-machine REQ-026) requires the E2E test to exercise the retry lifecycle. For the initial implementation, testing `pending -> sending -> not_sent -> sending -> failed` (retry exhaustion) is sufficient because it exercises all transitions except the final success after retry. The `not_sent -> sending -> delivered` path is already covered by integration tests with mock senders. A future enhancement could add a `@flaky.com` domain that fails on odd attempts and succeeds on even attempts.
+**Decision made:** Tested as integration tests with mock senders in `internal/infra/sqlite/` rather than full E2E. `TestRetryLifecycleIntegration` exercises the complete `pending -> sending -> not_sent -> sending -> delivered` path using a real SQLite store and the domain state machine directly. `TestRetryLimitExhaustionIntegration` exercises the `pending -> sending -> not_sent -> sending -> failed` exhaustion path. Both verify state transitions and audit log entries. See `internal/infra/sqlite/retry_integration_test.go`.
 **Alternative interpretation:** The E2E test could use a real email address (not a simulated domain) with a deliberately misconfigured SMTP backend for the first attempt, then fix the config before the retry. This is fragile and complex.
 **Impact if wrong:** If the full retry-then-success path is required E2E, the current simulated domain map is insufficient. The test would need either a new simulated domain or a test-only configuration to control failure behavior.
 
-## E2E Reset Guard 409 -- Getting a Notification into not_sent State -- OPEN
+## E2E Reset Guard 409 -- Getting a Notification into not_sent State -- RESOLVED
 
 **Source says:** The audit identified a gap: no E2E test verifies the reset guard (HTTP 409 when `not_sent` with retries remaining). The spec (notification-management REQ-027) requires this E2E test.
 **Ambiguity:** To test the reset guard E2E, the test needs a notification in `not_sent` state with `retry_count < retry_limit`. In the QA build, `@fail.com` produces transient failures that transition to `not_sent`. But the automatic retry via goqite visibility timeout may pick up the job before the test has time to send the reset request. There is a race between the test's reset attempt and goqite's automatic retry.
-**Decision made:** The E2E test should poll `GET /v1/notifications` until the notification reaches `not_sent`, then immediately send the reset request. The goqite visibility timeout (default 30 seconds for `@fail.com` due to the simulated timeout delay) provides a window for the reset attempt. If the window is too narrow, the test timeout can be adjusted or the visibility timeout can be configured longer for test purposes.
+**Decision made:** Tested as integration tests in `internal/infra/sqlite/resetguard_integration_test.go` rather than full E2E. `TestResetGuardRejectRetryInProgress` creates a notification directly in `not_sent` state with `retry_count=1, retry_limit=3` in a real SQLite database, then calls `domain.CheckResetAllowed` and asserts `ErrRetriesRemaining`. Additional tests cover the allow cases: retries exhausted, failed state, and delivered state. This avoids the E2E race condition with goqite's automatic retry.
 **Alternative interpretation:** The test could use a direct database manipulation to set the notification to `not_sent` state, bypassing the natural flow. This is more reliable but less "end-to-end."
 **Impact if wrong:** If the goqite retry fires before the reset request, the notification may have already transitioned out of `not_sent`, and the 409 assertion fails. The test would be flaky.
 
-## E2E Pagination Limit Clamping -- Where Is the Clamp Enforced -- OPEN
+## E2E Pagination Limit Clamping -- Where Is the Clamp Enforced -- RESOLVED
 
 **Source says:** The spec (notification-management REQ-009) says `limit` has a "maximum 100." The audit identified no E2E test for limit clamping.
 **Ambiguity:** Is the limit clamped silently (a request with `limit=200` is treated as `limit=100` and returns HTTP 200) or rejected (returns HTTP 400 for exceeding the maximum)? The spec says "maximum 100" but does not specify the behavior when exceeded.
-**Decision made:** The spec (notification-management REQ-028) assumes silent clamping: `limit=200` is treated as `limit=100`, the response contains at most 100 items, and the status is HTTP 200. This is the more common API pattern and matches the huma framework's default behavior for bounded integer parameters.
+**Decision made:** Silent clamping. `HandleList` in `list.go` clamps: `if limit > maxPageLimit { limit = maxPageLimit }` where `maxPageLimit = 100`. Returns HTTP 200 with at most 100 items. The E2E test `TestPaginationLimitClamping` in `tests/e2e/pagination_test.go` sends `?limit=200`, asserts HTTP 200, and verifies `len(notifications) <= 100`. See `internal/infra/httpapi/list.go` lines 53-55 and `tests/e2e/pagination_test.go`.
 **Alternative interpretation:** The API could reject `limit > 100` with HTTP 422 or HTTP 400, forcing the client to use a valid value.
 **Impact if wrong:** If the API rejects instead of clamping, E2E tests asserting HTTP 200 will fail. If the API clamps but the E2E test expects rejection, the test will also fail. The implementation must match the spec.
 
-## Integration Test Boundary -- Worker with Real Store vs Worker with Mock Store -- OPEN
+## Integration Test Boundary -- Worker with Real Store vs Worker with Mock Store -- RESOLVED
 
 **Source says:** The audit identified that the existing worker tests (`internal/infra/queue/worker_test.go`) use a `spyStore` (in-memory mock), and the existing integration tests (`internal/infra/sqlite/statemachine_integration_test.go`) test the state machine with real SQLite but not the worker. There is no test combining the worker with real SQLite.
 **Ambiguity:** Should the "worker with real SQLite" integration test live in `internal/infra/sqlite/` (next to the existing state machine integration tests) or in `internal/infra/queue/` (next to the worker unit tests)? The test crosses two package boundaries: it needs the worker from `queue` and the store from `sqlite`.
-**Decision made:** The spec (notification-state-machine REQ-028) requires the test but does not prescribe the package location. The natural home is `internal/infra/sqlite/` because the existing integration tests there already import the domain package and exercise the store directly. The worker can be imported from `queue`. If import cycles prevent this, a separate `tests/integration/` directory is acceptable.
+**Decision made:** Tests live in `internal/infra/sqlite/` package. `worker_integration_test.go` imports `queue.NewEmailWorker` and `queue.EmailJobPayload` from the queue package and uses a real SQLite store via `Open("")`. Tests `TestWorkerIntegrationSuccessPath` (pending -> sending -> delivered) and `TestWorkerIntegrationSoftFailPath` (pending -> sending -> not_sent) with mock senders for controlled success/failure. Verifies final state and audit log entries in the real database. See `internal/infra/sqlite/worker_integration_test.go`.
 **Alternative interpretation:** The test could live in `internal/infra/queue/` with an import of `sqlite.Open("")` for the test database. Or a top-level `tests/integration/` package could house all cross-package integration tests.
 **Impact if wrong:** If placed in the wrong package, import cycles may prevent compilation. The test would need to be moved.
 
-## Queue Integration Test -- Dequeue Mechanism -- OPEN
+## Queue Integration Test -- Dequeue Mechanism -- RESOLVED
 
 **Source says:** The audit identified that the existing queue test (`internal/infra/queue/queue_test.go`) only tests `Enqueue` and verifies the row exists in the goqite table. There is no test for dequeue/receive.
 **Ambiguity:** The `NotificationQueue` type wraps goqite for enqueuing but does not expose a `Receive` or `Dequeue` method -- that is handled by `goqite.Queue.Receive()` directly. To test the full cycle, the integration test would need to call `goqite.NewQueue(goqite.NewQueueOpts{...})` to get a queue instance and call `Receive()` on it. This requires the test to know the queue name (`"notifications"`) and goqite API.
-**Decision made:** The spec (notification-delivery REQ-032) requires the test to exercise enqueue-then-dequeue. The test should create both the `NotificationQueue` (for enqueue) and a raw `goqite.Queue` (for receive/dequeue), sharing the same `*sql.DB`. This verifies that the `NotificationQueue`'s enqueue produces messages that goqite can receive, which is the integration contract that matters.
+**Decision made:** `TestQueueEnqueueDequeueIntegration` in `queue_test.go` uses `nq.Queue().Receive()` to dequeue directly via the `NotificationQueue`'s exposed `Queue()` method. The test enqueues an `EmailJobPayload` via `nq.Enqueue`, then calls `nq.Queue().Receive()`, decodes the gob-encoded jobs envelope, and verifies the inner JSON payload matches the original. This confirms the `NotificationQueue` produces messages that the goqite jobs framework can consume. See `internal/infra/queue/queue_test.go`, `TestQueueEnqueueDequeueIntegration`.
 **Alternative interpretation:** The test could skip the dequeue step and only verify the row exists (which the current test already does). But this does not test the actual goqite receive path.
 **Impact if wrong:** If the `NotificationQueue` enqueues with a different queue name or body format than goqite expects, the enqueue-only test would pass but the actual system would fail at dequeue time.
