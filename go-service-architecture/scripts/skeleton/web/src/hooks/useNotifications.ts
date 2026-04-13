@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { Notification } from '../components'
+import type { Notification, NotificationStatus } from '../components'
 import { fetchNotifications, resetNotification } from '../api'
 import { useWebSocket, type WsMessage } from './useWebSocket'
 
@@ -85,6 +85,12 @@ export function useNotifications(): UseNotificationsResult {
     fetchPage()
   }, [fetchPage])
 
+  const nonResendableStates: Set<NotificationStatus> = new Set([
+    'pending',
+    'sending',
+    'delivered',
+  ])
+
   // WebSocket: merge state updates into the current list.
   useWebSocket(
     useCallback((msg: WsMessage) => {
@@ -93,6 +99,14 @@ export function useNotifications(): UseNotificationsResult {
           n.id === msg.id ? { ...n, status: msg.state } : n,
         ),
       )
+      if (nonResendableStates.has(msg.state)) {
+        setResending((prev) => {
+          if (!prev.has(msg.id)) return prev
+          const next = new Set(prev)
+          next.delete(msg.id)
+          return next
+        })
+      }
     }, []),
   )
 
