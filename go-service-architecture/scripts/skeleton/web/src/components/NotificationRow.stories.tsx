@@ -118,3 +118,30 @@ export const Resending: Story = {
     resending: true,
   },
 }
+
+export const DeliveredWithReset: Story = {
+  args: {
+    notification: {
+      id: 'ntf_reset01',
+      email: 'delivered@company.com',
+      status: 'delivered',
+      retry_count: 0,
+      retry_limit: 3,
+    },
+    onReset: fn(),
+  },
+}
+
+export const Resetting: Story = {
+  args: {
+    notification: {
+      id: 'ntf_resetting01',
+      email: 'resetting@company.com',
+      status: 'delivered',
+      retry_count: 0,
+      retry_limit: 3,
+    },
+    onReset: fn(),
+    resetting: true,
+  },
+}

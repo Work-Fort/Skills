@@ -15,6 +15,10 @@ export interface NotificationRowProps {
   onResend?: (id: string) => void
   /** When true, the resend button shows a loading state. */
   resending?: boolean
+  /** Called when the user clicks "Reset". Only shown for delivered state. */
+  onReset?: (id: string) => void
+  /** When true, the reset button shows a loading state. */
+  resetting?: boolean
 }
 
 // Resend is only available for notifications that did not succeed.
@@ -25,6 +29,8 @@ export function NotificationRow({
   notification,
   onResend,
   resending = false,
+  onReset,
+  resetting = false,
 }: NotificationRowProps) {
   const { id, email, status, retry_count, retry_limit } = notification
 
@@ -35,6 +41,9 @@ export function NotificationRow({
   // still in progress (not_sent with retries remaining).
   const retryInProgress = status === 'not_sent' && retry_count < retry_limit
   const disableResend = resending || retryInProgress
+
+  // REQ-068: Reset visible only for delivered state.
+  const showReset = onReset && status === 'delivered'
 
   return (
     <tr>
@@ -59,6 +68,16 @@ export function NotificationRow({
             disabled={disableResend}
           >
             {resending ? 'Resending...' : 'Resend'}
+          </Button>
+        )}
+        {showReset && (
+          <Button
+            variant="secondary"
+            className="min-w-[7.5rem]"
+            onClick={() => onReset(id)}
+            disabled={resetting}
+          >
+            {resetting ? 'Resetting...' : 'Reset'}
           </Button>
         )}
       </td>
