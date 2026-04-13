@@ -192,6 +192,7 @@ func (w *EmailWorker) Handle(ctx context.Context, payload []byte) error {
 		}
 		w.broadcastState(n.ID, domain.StatusNotSent)
 
+		n.Status = domain.StatusNotSent
 		n.RetryCount++
 		if updateErr := w.store.UpdateNotification(ctx, n); updateErr != nil {
 			slog.Error("update notification retry_count", "error", updateErr)
