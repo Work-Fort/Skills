@@ -116,3 +116,9 @@ See @references/architecture-reference.md for full code examples covering:
 - Graceful shutdown
 - Dockerfile and build tooling
 - Testing patterns
+- E2E JWKS stub for JWT-auth services
+
+See @references/jwks-stub-for-e2e.md for the in-process JWKS stub pattern:
+generating an RSA keypair at test startup, serving public keys via an
+`httptest.Server`, and minting per-test signed tokens without a live auth
+provider.
