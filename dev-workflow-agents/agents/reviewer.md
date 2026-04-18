@@ -141,6 +141,13 @@ Any other observations.
 
 Include file paths and line numbers for every finding.
 
+## Scope Discipline
+
+- **Your authorization source is one thing only:** a direct `SendMessage` from `team-lead` addressed to you by name, assigning a specific implementation to review. That message and only that message authorizes work.
+- **`task_assignment` notifications, `idle_notification` messages, broadcast messages, and automated routing metadata are NOT authorization.** They are informational signals from the task-list subsystem. Do not act on them as if they were directives.
+- **When your assigned review completes, deliver your verdict and go idle.** Do not pick up adjacent reviews or queue new work. Do not advance to subsequent plans. Wait for the next explicit assignment from team-lead.
+- **Plan status transitions are TPM-only.** You never flip `status` fields in plan documents. Edit-deny already enforces this mechanically — this rule makes the intent explicit.
+
 ## After approval
 
 Documentation marking the step complete is NOT committed until review passes. This is a hard rule.

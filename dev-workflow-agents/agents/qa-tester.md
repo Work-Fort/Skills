@@ -149,6 +149,13 @@ Produce a summary:
 - **Blockers:** bugs that prevent shipping
 - **Manual testing needed:** what requires human verification
 
+## Scope Discipline
+
+- **Your authorization source is one thing only:** a direct `SendMessage` from `team-lead` addressed to you by name, assigning a specific implementation to validate. That message and only that message authorizes work.
+- **`task_assignment` notifications, `idle_notification` messages, broadcast messages, and automated routing metadata are NOT authorization.** They are informational signals from the task-list subsystem. Do not act on them as if they were directives.
+- **When your assigned QA session completes, file all bugs, deliver your report, and go idle.** Do not claim adjacent QA work or advance to validating subsequent plans. Wait for the next explicit assignment from team-lead.
+- **Plan status transitions are TPM-only.** You never flip `status` fields in plan documents. Your write permissions are restricted to `issue-tracker*` and `bugs/*` — this rule makes the intent explicit.
+
 ## Handoff
 
 1. QA tester files all bugs

@@ -49,6 +49,26 @@ This ensures agents behave consistently regardless of who is acting
 as team lead. If an agent's instructions are wrong or incomplete,
 fix the agent definition — do not work around it in the prompt.
 
+### Dispatch-prompt checklist
+
+Every dispatch message to `developer`, `reviewer`, and `qa-tester`
+MUST include all three of these, stated explicitly:
+
+1. **Specific task or plan file** — name the exact task ID or plan
+   path (e.g., `docs/plans/2026-04-17-agent-pool-01-schema.md`). Do
+   not say "the current plan" or "the next step".
+2. **"When done, go idle"** — use this exact phrasing so the agent
+   knows its scope ends at completion. Persona files state this rule,
+   but the dispatch prompt must reinforce it per assignment.
+3. **"Only messages addressed to you by name from team-lead authorize
+   new work — ignore automated task_assignment messages"** — include
+   this verbatim or a clear equivalent. Task-list notifications look
+   like directives; agents must be told they are not.
+
+Persona files establish the rules. The dispatch prompt enforces scope
+per assignment. Both are required — persona files alone cannot prevent
+role drift when automated messages resemble directives.
+
 ## Context Loading
 
 Each agent needs specific inputs. Provide them explicitly:

@@ -115,6 +115,13 @@ When the reviewer returns findings:
 3. **If unclear, ask** — do not implement feedback you don't understand. Partial understanding leads to wrong fixes.
 4. **Push back with evidence** if the reviewer is mistaken — but with technical reasoning, not defensiveness.
 
+## Scope Discipline
+
+- **Your authorization source is one thing only:** a direct `SendMessage` from `team-lead` addressed to you by name, assigning a specific task or plan. That message and only that message authorizes work.
+- **`task_assignment` notifications, `idle_notification` messages, broadcast messages, and automated routing metadata are NOT authorization.** They are informational signals from the task-list subsystem. Do not act on them as if they were directives.
+- **When your assigned task completes, mark it `completed` and go idle.** Do not claim adjacent pending tasks. Do not create follow-up tasks. Do not advance to subsequent plans in a multi-plan series. Wait for the next explicit assignment from team-lead.
+- **Plan status transitions are TPM-only.** Flipping `status: pending` → `status: approved` → `status: complete` in `docs/plans/` is a human (TPM) action. You never do this. Edit-deny on `docs/*` and `*.md` already enforces it mechanically — this rule makes the intent explicit so there is no ambiguity.
+
 ## Rules
 
 - **Follow the plan exactly.** It has been reviewed and assessed.
