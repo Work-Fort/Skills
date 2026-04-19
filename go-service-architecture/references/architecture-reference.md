@@ -1419,6 +1419,49 @@ func NewID(prefix string) string {
 - Test files alongside source (`_test.go` suffix)
 - E2E tests in a separate `tests/e2e/` directory with its own `go.mod`
 
+### Test Fixture Return Types
+
+Test helpers **must return port interfaces, never concrete adapter types.** Even when a helper constructs a specific adapter internally (e.g., `sqlite.Open(":memory:")`), the return type must be the port:
+
+```go
+// WRONG — leaks the adapter, makes every test SQLite-only by inference
+func newTestStore(t *testing.T) *sqlite.Store {
+    s, err := sqlite.Open(":memory:")
+    if err != nil { t.Fatal(err) }
+    t.Cleanup(func() { s.Close() })
+    return s
+}
+
+// RIGHT — internal construction, port-typed return
+func newTestStore(t *testing.T) domain.Store {
+    s, err := sqlite.Open(":memory:")
+    if err != nil { t.Fatal(err) }
+    t.Cleanup(func() { s.Close() })
+    return s
+}
+```
+
+Why each part of this rule matters:
+
+- **The return type signals contract scope.** Returning `domain.Store` tells readers (and grep/lint tools) that the test exercises the port contract, not adapter-specific behavior. Returning `*sqlite.Store` silently narrows every caller to one backend.
+- **Future adapters plug in without test changes.** A second store implementation can be wired in without touching any test that already uses the port-typed helper.
+- **Adapter-specific behavior stays obviously isolated.** Code that legitimately needs a concrete type (e.g. calling `.SchemaVersion()` only on Postgres) should be in an explicitly named helper — not the silent default.
+
+When a test legitimately needs an adapter-specific method, factor a separate helper with an explicit name:
+
+```go
+func newSQLiteSchemaProbe(t *testing.T) *sqlite.Store {
+    s, err := sqlite.Open(":memory:")
+    if err != nil { t.Fatal(err) }
+    t.Cleanup(func() { s.Close() })
+    return s
+}
+```
+
+The concrete return type on a dedicated helper is a visible signal that the test is probing adapter internals — intentional, not accidental.
+
+Real-world note: this violation is easy to introduce silently and hard to notice in review. A service where production code is hexagonally clean can still have every unit test implicitly SQLite-only if all its `newTestStore` helpers return `*sqlite.Store`. The port-typed convention is the only way to make backend portability testable by default, not by inspection.
+
 ### End-to-End Tests
 
 E2E tests live in `tests/e2e/` with a separate `go.mod` so they can
@@ -1717,6 +1760,51 @@ When applying this orphan-hardening pattern to a repo, audit the
 mise/CI test runner alongside the harness code. After the fix
 lands, verify by running the runner once and checking the leak
 test's output is `--- PASS` (not `--- SKIP`).
+
+#### Multi-Daemon Test Isolation (Per-Backend)
+
+E2E tests that need multiple daemon processes **must be able to give each daemon an isolated backend instance, regardless of which backend the suite is running against.** SQLite isolation = a separate tempfile per daemon. Postgres isolation = a separate sibling database per daemon (e.g. `<svc>_test_b`, `<svc>_test_c`), each with its schema reset before the test and dropped after.
+
+The harness exposes this via a `FreshDB` primitive:
+
+```go
+// FreshDB returns a DSN for a sibling database that is isolated from the
+// default test database. Each call provisions one sibling.
+//
+// SQLite: returns a new tempfile path; the daemon opens it on startup.
+// Postgres: creates (or reuses) <svc>_test_b (cycling _c, _d, ...)
+//   and truncates the public schema. Cleanup drops the schema.
+func (h *Harness) FreshDB(t *testing.T) string {
+    // backend-detect, provision sibling, reset schema, return DSN
+}
+```
+
+Tests then express two-daemon isolation without knowing which backend is active:
+
+```go
+addrA, _ := harness.FreePort()
+dA, _ := harness.StartDaemon(svcBin, addrA)        // default DB
+defer dA.Cleanup()
+
+dsnB := harness.FreshDB(t)                          // sibling DB
+addrB, _ := harness.FreePort()
+dB, _ := harness.StartDaemon(svcBin, addrB, harness.WithDB(dsnB))
+defer dB.Cleanup()
+```
+
+**Anti-pattern — what not to do:**
+
+```go
+if os.Getenv("MYSERVICE_DB") != "" {
+    t.Skip("this test requires SQLite (MYSERVICE_DB must not be set)")
+}
+```
+
+This is silently negative-coverage: the test is in the suite but doesn't run on the production-relevant backend. If the harness lacks the primitive to support a test's shape, the right move is to **add the primitive** (i.e. implement `FreshDB`).
+
+If a skip is genuinely unavoidable today, the documentation rule applies: **every conditional `t.Skip` in an e2e test must be cross-referenced from `docs/remaining-work.md`** with a one-line note covering which test, which condition, and what work removes the skip. A skip with no paper trail is indistinguishable from an accidental omission — and will be treated as one six weeks later.
+
+Why this matters: when a service supports dual backends, an e2e test that can only run on SQLite is not testing the production path. The skip doesn't surface in CI output as a failure; it just disappears. The only way to catch that a feature works on Postgres is to run the test on Postgres — which requires the harness to support it.
 
 #### Writing Tests
 
