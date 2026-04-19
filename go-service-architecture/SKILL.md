@@ -116,6 +116,8 @@ See @references/architecture-reference.md for full code examples covering:
 - Graceful shutdown
 - Dockerfile and build tooling
 - Testing patterns
+- E2E daemon harness with orphan-process hardening (Setpgid + pgid
+  kill + `*os.File` stderr + `WaitDelay`)
 - E2E JWKS stub for JWT-auth services
 
 See @references/jwks-stub-for-e2e.md for the in-process JWKS stub pattern:

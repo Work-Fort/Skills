@@ -1578,6 +1578,109 @@ func (d *Daemon) StopFatal(t *testing.T) {
 }
 ```
 
+#### Orphan-Process Hardening (Required)
+
+The minimal `StartDaemon`/`Stop` shape above leaks orphan processes
+when the daemon spawns descendants (containerd shims, helper binaries,
+forked workers) or buffers stderr through an `io.Writer`. The leaked
+descendants keep stderr pipes alive, so `cmd.Wait()` blocks forever
+and the test step hangs until the CI workflow timeout cancels it.
+A real incident: Sharkfin's CI step hung for ~55 minutes after a
+single test failure left an orphan child holding the stderr pipe.
+
+The canonical fix has four parts. **Each is load-bearing — drop any
+one and the leak returns.**
+
+```go
+import "syscall"
+
+// In StartDaemon:
+stderrFile, err := os.CreateTemp("", "<svc>-e2e-stderr-*")
+if err != nil {
+    // cleanup, return
+}
+cmd := exec.Command(binary, args...)
+cmd.Env = append(os.Environ(), /* ... */)
+cmd.Stdout = stderrFile
+cmd.Stderr = stderrFile
+cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+cmd.WaitDelay = 10 * time.Second // Go 1.20+; force-close I/O after exit
+if err := cmd.Start(); err != nil {
+    stderrFile.Close()
+    os.Remove(stderrFile.Name())
+    // cleanup
+    return nil, err
+}
+
+// In Stop:
+pgid := cmd.Process.Pid // pgid == pid because of Setpgid
+_ = syscall.Kill(-pgid, syscall.SIGTERM)
+done := make(chan error, 1)
+go func() { done <- cmd.Wait() }()
+select {
+case <-done:
+case <-time.After(5 * time.Second):
+    _ = syscall.Kill(-pgid, syscall.SIGKILL)
+    <-done
+}
+```
+
+Why each part is load-bearing:
+
+1. **`Setpgid: true`** — places the daemon and every descendant in a
+   fresh process group whose pgid equals the daemon PID. Without it,
+   `kill -PID` only signals the daemon; orphans inherit init.
+2. **`*os.File` for stdout/stderr (NOT `io.Writer`)** — when stderr
+   is an `io.Writer` (e.g. `bytes.Buffer`, `io.MultiWriter`),
+   `exec.Cmd` creates an OS pipe and a goroutine that copies bytes
+   off the read end. A descendant that inherits the write end keeps
+   the pipe open after the daemon exits, so the copy goroutine never
+   sees EOF and `cmd.Wait()` blocks forever. Writing directly to an
+   `*os.File` skips the pipe entirely.
+3. **Negative-pid kill (`syscall.Kill(-pgid, sig)`)** — signals the
+   whole process group, killing leaked descendants alongside the
+   daemon. `cmd.Process.Signal` only signals the daemon itself.
+4. **`cmd.WaitDelay = 10 * time.Second`** — Go 1.20+ safety net.
+   If a descendant still holds an inherited fd after the daemon
+   process exits, `WaitDelay` makes `cmd.Wait()` close the I/O
+   sources and return after the delay instead of blocking forever.
+
+The pattern is Linux/Unix-only: `syscall.SysProcAttr.Setpgid` does
+not exist on Windows. All WorkFort e2e suites run on Linux today.
+
+To verify the fix in a test, signal the group with `sig 0` after
+`Stop` returns: `syscall.Kill(-pgid, 0)` returns
+`syscall.ESRCH` when the group is empty (no remaining members).
+This is the canonical "is the group empty?" probe and is the
+recommended assertion for leak-detection tests:
+
+```go
+if err := syscall.Kill(-pgid, 0); !errors.Is(err, syscall.ESRCH) {
+    t.Fatalf("kill(-%d, 0) = %v, want ESRCH", pgid, err)
+}
+```
+
+To capture stderr for log-dumps or DATA RACE detection, read the
+`*os.File` after `cmd.Wait()` returns:
+
+```go
+if t.Failed() {
+    data, _ := os.ReadFile(stderrFile.Name())
+    t.Logf("daemon stderr:\n%s", data)
+}
+data, _ := os.ReadFile(stderrFile.Name())
+if bytes.Contains(data, []byte("DATA RACE")) {
+    t.Fatal("data race detected in daemon")
+}
+stderrFile.Close()
+os.Remove(stderrFile.Name())
+```
+
+Apply the same four-part pattern to every long-lived subprocess the
+harness spawns — daemons, MCP bridges, workers, anything that itself
+forks. The pattern is mandatory for new harnesses and required when
+auditing existing ones for CI hangs.
+
 #### Writing Tests
 
 ```go
