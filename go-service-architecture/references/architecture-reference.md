@@ -1681,6 +1681,43 @@ harness spawns — daemons, MCP bridges, workers, anything that itself
 forks. The pattern is mandatory for new harnesses and required when
 auditing existing ones for CI hangs.
 
+##### Test-runner wiring (also required)
+
+The four-part code fix only matters if the test runner actually
+invokes the leak test. Two systematic gaps surfaced during the
+2026-04-19 cross-repo rollout — affected pylon, nexus, and sharkfin:
+
+1. **Binary env var must be exported by the runner.** Leak tests
+   typically gate on a `<SVC>_BINARY` env var (and `t.Skip` when
+   unset, so unit-test runs without a built binary don't fail).
+   The `mise run e2e` task (or equivalent) must export this env
+   var before invoking `go test`. Without it the leak test
+   silently SKIPs in CI — the regression guard is effectively dead:
+
+   ```bash
+   #!/usr/bin/env bash
+   #MISE depends=["build:dev"]
+   set -euo pipefail
+   export <SVC>_BINARY="${MISE_PROJECT_ROOT}/build/<svc>"
+   cd tests/e2e && go test -v -race -timeout 180s ./...
+   ```
+
+2. **`go test` glob must reach the leak test's package.** Bare
+   `go test` (with no path arg) and `go test .` only run the
+   current package. If the leak test lives in a subpackage
+   (e.g. `tests/e2e/harness/`), use `./...` to include it:
+
+   ```
+   go test ... ./...   # includes subpackages — correct
+   go test ... .       # current package only — leak test never reached
+   go test ...         # same as above — current package only
+   ```
+
+When applying this orphan-hardening pattern to a repo, audit the
+mise/CI test runner alongside the harness code. After the fix
+lands, verify by running the runner once and checking the leak
+test's output is `--- PASS` (not `--- SKIP`).
+
 #### Writing Tests
 
 ```go
